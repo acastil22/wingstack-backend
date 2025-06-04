@@ -4,7 +4,7 @@ import uuid
 import os
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///wingstack.db'  # Local file DB
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI')  # Cloud DB
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
@@ -55,5 +55,7 @@ def get_quotes():
             "created_at": q.created_at
         })
     return jsonify(result), 200
-    if __name__ == "__main__":
+
+# ✅ This must be all the way at the left, not indented!
+if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
