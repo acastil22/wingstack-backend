@@ -1,34 +1,22 @@
 from flask_sqlalchemy import SQLAlchemy
-import uuid
 from datetime import datetime
+import uuid
 
 db = SQLAlchemy()
 
+# Function to generate unique IDs
 def generate_uuid():
     return str(uuid.uuid4())
 
-class Account(db.Model):
-    id = db.Column(db.String, primary_key=True, default=generate_uuid)
-    name = db.Column(db.String(100))
-    email = db.Column(db.String(100), unique=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-class Trip(db.Model):
-    id = db.Column(db.String, primary_key=True, default=generate_uuid)
-    account_id = db.Column(db.String, db.ForeignKey('account.id'), nullable=False)
-    trip_name = db.Column(db.String(200))
-    origin = db.Column(db.String(10))
-    destination = db.Column(db.String(10))
-    departure_date = db.Column(db.Date)
-    return_date = db.Column(db.Date)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
+# Quote model with email tracking and sharing
 class Quote(db.Model):
     id = db.Column(db.String, primary_key=True, default=generate_uuid)
-    trip_id = db.Column(db.String, db.ForeignKey('trip.id'), nullable=False)
-    broker_name = db.Column(db.String(100))
-    operator_name = db.Column(db.String(100))
-    aircraft_type = db.Column(db.String(50))  # Turbo, Light, etc.
-    price = db.Column(db.Float)
-    notes = db.Column(db.Text)
+    trip_id = db.Column(db.String, nullable=False, default=generate_uuid)
+    broker_name = db.Column(db.String, nullable=False)
+    operator_name = db.Column(db.String, nullable=False)
+    aircraft_type = db.Column(db.String, nullable=False)  # e.g. Turbo, Light, etc.
+    price = db.Column(db.String, nullable=False)
+    notes = db.Column(db.String, nullable=True)
+    submitted_by_email = db.Column(db.String, nullable=True)  # who submitted the quote
+    shared_with_emails = db.Column(db.String, nullable=True)  # comma-separated list of shared emails
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
