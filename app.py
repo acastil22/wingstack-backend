@@ -1,10 +1,11 @@
 from flask import Flask, request, jsonify
-from models import db, Quote  # import your DB and model
+from models import db, Quote
 import uuid
 import os
+from datetime import datetime
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI')  # Cloud DB
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
@@ -31,7 +32,10 @@ def submit_quote():
         operator_name=data["operator_name"],
         aircraft_type=data["aircraft_type"],
         price=data["price"],
-        notes=data.get("notes", "")
+        notes=data.get("notes", ""),
+        email=data.get("email", ""),
+        shared_with=data.get("shared_with", ""),
+        created_at=datetime.utcnow()
     )
 
     db.session.add(new_quote)
@@ -52,10 +56,38 @@ def get_quotes():
             "aircraft_type": q.aircraft_type,
             "price": q.price,
             "notes": q.notes,
+            "email": q.email,
+            "shared_with": q.shared_with,
             "created_at": q.created_at
         })
     return jsonify(result), 200
 
-# ✅ This must be all the way at the left, not indented!
+@app.route('/quotes/by-email', methods=['GET'])
+def get_quotes_by_email():
+    email = request.args.get('email')
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+
+    quotes = Quote.query.filter(
+        (Quote.email == email) |
+        (Quote.shared_with.like(f"%{email}%"))
+    ).all()
+
+    result = []
+    for q in quotes:
+        result.append({
+            "id": q.id,
+            "trip_id": q.trip_id,
+            "broker_name": q.broker_name,
+            "operator_name": q.operator_name,
+            "aircraft_type": q.aircraft_type,
+            "price": q.price,
+            "notes": q.notes,
+            "email": q.email,
+            "shared_with": q.shared_with,
+            "created_at": q.created_at
+        })
+    return jsonify(result), 200
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
