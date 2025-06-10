@@ -4,3 +4,5 @@ gunicorn
 psycopg2-binary
 openai
 PyPDF2
+requests
+beautifulsoup4
