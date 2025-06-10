@@ -3,11 +3,14 @@ from models import db, Quote
 import uuid
 import os
 from datetime import datetime
-
 import openai
 import json
 
-# NEW: Use the updated OpenAI client interface
+# For PDF and web scraping:
+from PyPDF2 import PdfReader
+import requests
+from bs4 import BeautifulSoup
+
 client = openai.OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
 app = Flask(__name__)
@@ -111,7 +114,6 @@ def extract_quote_info():
     if not input_text:
         return jsonify({"error": "No input_text provided"}), 400
 
-    # Prepare a system prompt for the OpenAI model
     prompt = f"""
 You are a private aviation quote extraction assistant. Extract the following fields from the text below (if available): 
 Company, Aircraft Type, Price, Taxes Included (yes/no/amount), Pictures (links or mention), Cancellation Policy, Wi-Fi (yes/no/unknown), Year of Make (YOM), Year of Refurbishment.
@@ -124,9 +126,8 @@ Return a JSON object with keys: company, aircraft_type, price, taxes_included, p
 """
 
     try:
-        # This is the new v1.0+ way!
         completion = client.chat.completions.create(
-            model="gpt-3.5-turbo",  # or "gpt-4o"
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "You extract structured data from messy quote emails or PDFs."},
                 {"role": "user", "content": prompt}
@@ -142,6 +143,51 @@ Return a JSON object with keys: company, aircraft_type, price, taxes_included, p
         except Exception:
             return jsonify({"raw_response": response_text}), 200
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# === NEW ENDPOINT: PDF UPLOAD ===
+@app.route('/extract-quote-from-pdf', methods=['POST'])
+def extract_quote_from_pdf():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['file']
+    try:
+        reader = PdfReader(file)
+        text = ''
+        for page in reader.pages:
+            text += page.extract_text() or ''
+        if not text.strip():
+            return jsonify({'error': 'Could not extract text from PDF'}), 400
+
+        # Use the existing extraction logic
+        with app.test_request_context(json={
+            "input_text": text,
+            "input_type": "pdf_text"
+        }):
+            return extract_quote_info()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# === NEW ENDPOINT: LINK SCRAPE ===
+@app.route('/extract-quote-from-link', methods=['POST'])
+def extract_quote_from_link():
+    data = request.get_json()
+    url = data.get("url")
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+
+    try:
+        resp = requests.get(url, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        page_text = soup.get_text(separator="\n")
+        # Use the existing extraction logic
+        with app.test_request_context(json={
+            "input_text": page_text,
+            "input_type": "link"
+        }):
+            return extract_quote_info()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
