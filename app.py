@@ -5,15 +5,16 @@ import os
 from datetime import datetime
 
 import openai
+import json
+
+# NEW: Use the updated OpenAI client interface
+client = openai.OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
-
-# Set your OpenAI API key from Railway or env variable
-openai.api_key = os.environ.get('OPENAI_API_KEY')
 
 with app.app_context():
     db.create_all()
@@ -123,8 +124,9 @@ Return a JSON object with keys: company, aircraft_type, price, taxes_included, p
 """
 
     try:
-        completion = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # or gpt-4o if enabled
+        # This is the new v1.0+ way!
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo",  # or "gpt-4o"
             messages=[
                 {"role": "system", "content": "You extract structured data from messy quote emails or PDFs."},
                 {"role": "user", "content": prompt}
@@ -132,10 +134,8 @@ Return a JSON object with keys: company, aircraft_type, price, taxes_included, p
             max_tokens=500,
             temperature=0.0,
         )
-        response_text = completion.choices[0].message['content']
+        response_text = completion.choices[0].message.content
 
-        # Try to parse as JSON (otherwise just return raw)
-        import json
         try:
             response_json = json.loads(response_text)
             return jsonify(response_json), 200
