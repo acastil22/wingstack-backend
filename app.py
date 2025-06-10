@@ -6,11 +6,12 @@ from datetime import datetime
 import openai
 import json
 
-# For PDF and web scraping:
+# PDF and Web scraping:
 from PyPDF2 import PdfReader
 import requests
 from bs4 import BeautifulSoup
 
+# Initialize OpenAI client (new v1+ API)
 client = openai.OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
 app = Flask(__name__)
@@ -29,7 +30,6 @@ def home():
 @app.route('/submit-quote', methods=['POST'])
 def submit_quote():
     data = request.get_json()
-
     required = ["trip_id", "broker_name", "operator_name", "aircraft_type", "price"]
     if not all(field in data for field in required):
         return jsonify({"error": "Missing required fields"}), 400
@@ -49,7 +49,6 @@ def submit_quote():
 
     db.session.add(new_quote)
     db.session.commit()
-
     return jsonify({"status": "success", "id": new_quote.id}), 200
 
 @app.route('/quotes', methods=['GET'])
@@ -98,6 +97,7 @@ def get_quotes_by_email():
         })
     return jsonify(result), 200
 
+# === OpenAI Extraction for any text ===
 @app.route('/extract-quote-info', methods=['POST'])
 def extract_quote_info():
     """
@@ -170,7 +170,7 @@ def extract_quote_from_pdf():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# === NEW ENDPOINT: LINK SCRAPE ===
+# === NEW ENDPOINT: LINK SCRAPE (for public quote links) ===
 @app.route('/extract-quote-from-link', methods=['POST'])
 def extract_quote_from_link():
     data = request.get_json()
@@ -182,7 +182,7 @@ def extract_quote_from_link():
         resp = requests.get(url, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
         page_text = soup.get_text(separator="\n")
-        # Use the existing extraction logic
+        # Use the existing extraction logic (AI)
         with app.test_request_context(json={
             "input_text": page_text,
             "input_type": "link"
