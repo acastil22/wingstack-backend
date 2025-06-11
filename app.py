@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from models import db, Quote
+from models import db, Quote, WingTrip
 import uuid
 import os
 from datetime import datetime
@@ -11,7 +11,7 @@ from PyPDF2 import PdfReader
 import requests
 from bs4 import BeautifulSoup
 
-# Initialize OpenAI client (new v1+ API)
+# Initialize OpenAI client (v1+ API)
 client = openai.OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
 app = Flask(__name__)
@@ -27,6 +27,55 @@ with app.app_context():
 def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
+# === TRIP CREATION (Planner or Broker can use) ===
+@app.route('/trips', methods=['POST'])
+def create_trip():
+    data = request.get_json()
+    required = ["route", "departure_date"]
+    if not all(field in data for field in required):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    trip = WingTrip(
+        id=str(uuid.uuid4()),
+        route=data["route"],
+        departure_date=data["departure_date"],
+        passenger_count=data.get("passenger_count", ""),
+        size=data.get("size", ""),
+        budget=data.get("budget", ""),
+        broker_name=data.get("broker_name", ""),
+        broker_email=data.get("broker_email", ""),
+        planner_name=data.get("planner_name", ""),
+        planner_email=data.get("planner_email", ""),
+        status=data.get("status", "pending"),
+        created_at=datetime.utcnow()
+    )
+    db.session.add(trip)
+    db.session.commit()
+    return jsonify({"status": "success", "id": trip.id}), 200
+
+# === LIST ALL TRIPS ===
+@app.route('/trips', methods=['GET'])
+def get_trips():
+    trips = WingTrip.query.all()
+    result = []
+    for t in trips:
+        result.append({
+            "id": t.id,
+            "route": t.route,
+            "departure_date": t.departure_date,
+            "passenger_count": t.passenger_count,
+            "size": t.size,
+            "budget": t.budget,
+            "broker_name": t.broker_name,
+            "broker_email": t.broker_email,
+            "planner_name": t.planner_name,
+            "planner_email": t.planner_email,
+            "status": t.status,
+            "created_at": t.created_at
+        })
+    return jsonify(result), 200
+
+# === QUOTE CREATION ===
 @app.route('/submit-quote', methods=['POST'])
 def submit_quote():
     data = request.get_json()
@@ -42,8 +91,8 @@ def submit_quote():
         aircraft_type=data["aircraft_type"],
         price=data["price"],
         notes=data.get("notes", ""),
-        email=data.get("email", ""),
-        shared_with=data.get("shared_with", ""),
+        submitted_by_email=data.get("submitted_by_email", ""),
+        shared_with_emails=data.get("shared_with_emails", ""),
         created_at=datetime.utcnow()
     )
 
@@ -51,6 +100,7 @@ def submit_quote():
     db.session.commit()
     return jsonify({"status": "success", "id": new_quote.id}), 200
 
+# === LIST ALL QUOTES ===
 @app.route('/quotes', methods=['GET'])
 def get_quotes():
     quotes = Quote.query.all()
@@ -64,12 +114,13 @@ def get_quotes():
             "aircraft_type": q.aircraft_type,
             "price": q.price,
             "notes": q.notes,
-            "email": q.email,
-            "shared_with": q.shared_with,
+            "submitted_by_email": q.submitted_by_email,
+            "shared_with_emails": q.shared_with_emails,
             "created_at": q.created_at
         })
     return jsonify(result), 200
 
+# === QUOTES FILTERED BY EMAIL ===
 @app.route('/quotes/by-email', methods=['GET'])
 def get_quotes_by_email():
     email = request.args.get('email')
@@ -77,8 +128,8 @@ def get_quotes_by_email():
         return jsonify({"error": "Email is required"}), 400
 
     quotes = Quote.query.filter(
-        (Quote.email == email) |
-        (Quote.shared_with.like(f"%{email}%"))
+        (Quote.submitted_by_email == email) |
+        (Quote.shared_with_emails.like(f"%{email}%"))
     ).all()
 
     result = []
@@ -91,8 +142,8 @@ def get_quotes_by_email():
             "aircraft_type": q.aircraft_type,
             "price": q.price,
             "notes": q.notes,
-            "email": q.email,
-            "shared_with": q.shared_with,
+            "submitted_by_email": q.submitted_by_email,
+            "shared_with_emails": q.shared_with_emails,
             "created_at": q.created_at
         })
     return jsonify(result), 200
@@ -100,13 +151,6 @@ def get_quotes_by_email():
 # === OpenAI Extraction for any text ===
 @app.route('/extract-quote-info', methods=['POST'])
 def extract_quote_info():
-    """
-    Expects JSON: {
-      "input_text": "...",
-      "input_type": "email_body" | "pdf_text" | "link"
-    }
-    Returns: extracted fields via OpenAI
-    """
     data = request.get_json()
     input_text = data.get("input_text", "")
     input_type = data.get("input_type", "email_body")
@@ -146,7 +190,7 @@ Return a JSON object with keys: company, aircraft_type, price, taxes_included, p
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# === NEW ENDPOINT: PDF UPLOAD ===
+# === PDF UPLOAD QUOTE EXTRACTION ===
 @app.route('/extract-quote-from-pdf', methods=['POST'])
 def extract_quote_from_pdf():
     if 'file' not in request.files:
@@ -170,7 +214,7 @@ def extract_quote_from_pdf():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# === NEW ENDPOINT: LINK SCRAPE (for public quote links) ===
+# === LINK SCRAPE FOR PUBLIC QUOTE LINKS ===
 @app.route('/extract-quote-from-link', methods=['POST'])
 def extract_quote_from_link():
     data = request.get_json()
