@@ -235,5 +235,24 @@ def extract_quote_from_link():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# === PATCH TRIP BY ID ===
+@app.route('/trips/<trip_id>', methods=['PATCH'])
+def update_trip(trip_id):
+    trip = WingTrip.query.get(trip_id)
+    if not trip:
+        return jsonify({"error": "Trip not found"}), 404
+
+    data = request.get_json()
+
+    trip.route = data.get("route", trip.route)
+    trip.departure_date = data.get("departure_date", trip.departure_date)
+    trip.passenger_count = data.get("passenger_count", trip.passenger_count)
+    trip.size = data.get("size", trip.size)
+    trip.budget = data.get("budget", trip.budget)
+    trip.status = data.get("status", trip.status)
+
+    db.session.commit()
+    return jsonify({"message": "Trip updated"}), 200
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
