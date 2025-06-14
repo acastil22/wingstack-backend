@@ -5,12 +5,11 @@ import os
 from datetime import datetime
 import openai
 import json
-from PyPDF2 import PdfReader
-import requests
-from bs4 import BeautifulSoup
 
+# Initialize OpenAI
 client = openai.OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
+# Flask setup
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -24,12 +23,11 @@ def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
 
-# === AI Trip Parsing (Flexible with FAA/ICAO, Dates, Times) ===
+# === AI PARSER ===
 @app.route('/parse-trip-input', methods=['POST'])
 def parse_trip_input():
     data = request.get_json()
     input_text = data.get("input_text", "").strip()
-
     if not input_text:
         return jsonify({"error": "No input text provided."}), 400
 
@@ -39,22 +37,13 @@ You are a smart AI assistant for private jet bookings. A user entered the follow
 \"\"\"{input_text}\"\"\"
 
 Your job is to:
-1. Detect all airport names, cities, or common travel terms (e.g. "Teterboro", "NYC", "San Jose", "SFO").
-2. Convert each airport or city into a proper airport code:
-   - Use 3-letter FAA codes for U.S. airports (e.g., Teterboro → TEB, Van Nuys → VNY).
-   - Use 4-letter ICAO codes for international airports (e.g., London Heathrow → EGLL).
-3. Use your best judgment to correct spelling errors, formatting issues, or abbreviations (e.g. "teeboroh" → TEB). Assume some entries are not autocorrected — match what you believe the user intended.
-4. Determine the logical travel sequence — even if the user only lists destinations or uses shorthand.
-5. Match dates/times to legs in order. For example, if 3 destinations and 2 dates are listed, assume 2 legs. Use local timezone based on departure airport.
-6. Time format must be 24-hour (e.g. 14:30). Dates must be MM/DD/YYYY.
-7. Extract passenger count and budget as strings if mentioned.
+1. Detect all airport names, cities, or travel terms.
+2. Convert to FAA (US) or ICAO (International) codes.
+3. Fix spelling errors or abbreviations.
+4. Infer leg sequence based on order and match to dates/times.
+5. Return JSON only. Use MM/DD/YYYY and 24-hour time (HH:MM).
 
-Examples:
-- "teeboroh to oakland and then sjc"
-- "Fly from Van Nuys to Vegas June 12 at 3pm, back on June 14"
-- "TEB to OAK to SJC June 20 at 0900 and June 21 at 1000, 5 pax, budget 70k"
-
-Return only valid JSON like this:
+Example return:
 {{
   "legs": [
     {{ "from": "KTEB", "to": "KOAK", "date": "06/20/2025", "time": "09:00" }},
@@ -63,42 +52,30 @@ Return only valid JSON like this:
   "passenger_count": "5",
   "budget": "70000"
 }}
-
-If any part is missing or unclear, return it as an empty string (""). No commentary or explanation — just valid JSON.
+If unclear, use empty strings. No commentary.
 """
 
     try:
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {
-                    "role": "system",
-                    "content": "You convert messy human trip requests into structured JSON with FAA/ICAO codes."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
+                {"role": "system", "content": "You convert messy human trip requests into structured JSON."},
+                {"role": "user", "content": prompt}
             ],
             temperature=0.3,
             max_tokens=800
         )
-
         content = response.choices[0].message.content.strip()
+        parsed = json.loads(content)
+        return jsonify(parsed), 200
 
-        try:
-            parsed = json.loads(content)
-            return jsonify(parsed), 200
-        except json.JSONDecodeError:
-            return jsonify({
-                "error": "AI output was not valid JSON",
-                "raw_output": content
-            }), 500
-
+    except json.JSONDecodeError:
+        return jsonify({"error": "AI output was not valid JSON", "raw_output": content}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# === TRIP CREATION + LEG STORAGE ===
+
+# === CREATE TRIP + LEGS ===
 @app.route('/trips', methods=['POST'])
 def create_trip():
     data = request.get_json()
@@ -107,7 +84,6 @@ def create_trip():
         return jsonify({"error": "Missing required fields"}), 400
 
     trip_id = str(uuid.uuid4())
-
     trip = WingTrip(
         id=trip_id,
         route=data["route"],
@@ -124,27 +100,31 @@ def create_trip():
     )
     db.session.add(trip)
 
-    # Save associated legs if provided
-    legs = data.get("legs", [])
-    for leg in legs:
+    for leg in data.get("legs", []):
+        try:
+            date_obj = datetime.strptime(leg.get("date", ""), "%m/%d/%Y").date() if leg.get("date") else None
+            time_obj = datetime.strptime(leg.get("time", ""), "%H:%M").time() if leg.get("time") else None
+        except ValueError:
+            return jsonify({"error": f"Invalid leg date/time format: {leg}"}), 400
+
         db.session.add(TripLeg(
             id=str(uuid.uuid4()),
             trip_id=trip_id,
             from_location=leg.get("from", ""),
             to_location=leg.get("to", ""),
-            date=leg.get("date", ""),
-            time=leg.get("time", "")
+            date=date_obj,
+            time=time_obj
         ))
 
     db.session.commit()
     return jsonify({"status": "success", "id": trip_id}), 200
 
 
-# === LIST ALL TRIPS ===
+# === GET ALL TRIPS ===
 @app.route('/trips', methods=['GET'])
 def get_trips():
     trips = WingTrip.query.all()
-    result = [{
+    return jsonify([{
         "id": t.id,
         "route": t.route,
         "departure_date": t.departure_date,
@@ -156,27 +136,8 @@ def get_trips():
         "planner_name": t.planner_name,
         "planner_email": t.planner_email,
         "status": t.status,
-        "created_at": t.created_at
-    } for t in trips]
-    return jsonify(result), 200
-
-
-# === PATCH TRIP ===
-@app.route('/trips/<trip_id>', methods=['PATCH'])
-def update_trip(trip_id):
-    trip = WingTrip.query.get(trip_id)
-    if not trip:
-        return jsonify({"error": "Trip not found"}), 404
-
-    data = request.get_json()
-    trip.route = data.get("route", trip.route)
-    trip.departure_date = data.get("departure_date", trip.departure_date)
-    trip.passenger_count = data.get("passenger_count", trip.passenger_count)
-    trip.size = data.get("size", trip.size)
-    trip.budget = data.get("budget", trip.budget)
-    trip.status = data.get("status", trip.status)
-    db.session.commit()
-    return jsonify({"message": "Trip updated"}), 200
+        "created_at": t.created_at.isoformat()
+    } for t in trips]), 200
 
 
 # === GET TRIP LEGS ===
@@ -184,19 +145,18 @@ def update_trip(trip_id):
 def get_trip_legs(trip_id):
     legs = TripLeg.query.filter_by(trip_id=trip_id).all()
     if not legs:
-        return jsonify({"message": "No legs found for this trip"}), 404
+        return jsonify({"message": "No legs found"}), 404
 
-    result = [{
+    return jsonify([{
         "id": leg.id,
         "from": leg.from_location,
         "to": leg.to_location,
-        "date": leg.date,
-        "time": leg.time
-    } for leg in legs]
-    return jsonify(result), 200
+        "date": leg.date.isoformat() if leg.date else "",
+        "time": leg.time.strftime("%H:%M") if leg.time else ""
+    } for leg in legs]), 200
 
 
-# === QUOTE CREATION ===
+# === SUBMIT QUOTE ===
 @app.route('/submit-quote', methods=['POST'])
 def submit_quote():
     data = request.get_json()
@@ -221,28 +181,10 @@ def submit_quote():
     return jsonify({"status": "success", "id": quote.id}), 200
 
 
-# === GET QUOTES ===
-@app.route('/quotes', methods=['GET'])
-def get_quotes():
-    quotes = Quote.query.all()
-    result = [{
-        "id": q.id,
-        "trip_id": q.trip_id,
-        "broker_name": q.broker_name,
-        "operator_name": q.operator_name,
-        "aircraft_type": q.aircraft_type,
-        "price": q.price,
-        "notes": q.notes,
-        "submitted_by_email": q.submitted_by_email,
-        "shared_with_emails": q.shared_with_emails,
-        "created_at": q.created_at
-    } for q in quotes]
-    return jsonify(result), 200
-
-
+# === GET QUOTES BY EMAIL ===
 @app.route('/quotes/by-email', methods=['GET'])
 def get_quotes_by_email():
-    email = request.args.get('email')
+    email = request.args.get("email")
     if not email:
         return jsonify({"error": "Email is required"}), 400
 
@@ -251,7 +193,7 @@ def get_quotes_by_email():
         (Quote.shared_with_emails.like(f"%{email}%"))
     ).all()
 
-    result = [{
+    return jsonify([{
         "id": q.id,
         "trip_id": q.trip_id,
         "broker_name": q.broker_name,
@@ -261,12 +203,11 @@ def get_quotes_by_email():
         "notes": q.notes,
         "submitted_by_email": q.submitted_by_email,
         "shared_with_emails": q.shared_with_emails,
-        "created_at": q.created_at
-    } for q in quotes]
-    return jsonify(result), 200
+        "created_at": q.created_at.isoformat()
+    } for q in quotes]), 200
 
 
-# === CHAT FEATURES ===
+# === CHAT LOGS & MESSAGES ===
 @app.route('/chat/<trip_id>', methods=['GET'])
 def get_or_create_chat(trip_id):
     chat = Chat.query.filter_by(trip_id=trip_id).first()
@@ -290,20 +231,20 @@ def get_messages(chat_id):
         "sender_email": m.sender_email, 
         "content": m.content, 
         "timestamp": m.timestamp.isoformat() 
-    } for m in messages])
+    } for m in messages]), 200
 
 
 @app.route('/messages', methods=['POST'])
 def post_message():
     data = request.get_json()
-    required = ['chat_id', 'sender_email', 'content']
+    required = ["chat_id", "sender_email", "content"]
     if not all(k in data for k in required):
         return jsonify({"error": "Missing required field"}), 400
 
     msg = Message(
-        chat_id=data['chat_id'],
-        sender_email=data['sender_email'],
-        content=data['content'],
+        chat_id=data["chat_id"],
+        sender_email=data["sender_email"],
+        content=data["content"],
         timestamp=datetime.utcnow()
     )
     db.session.add(msg)
@@ -311,7 +252,6 @@ def post_message():
     return jsonify({"message": "Message posted", "id": msg.id}), 200
 
 
-# === CHAT SUMMARY (AI) ===
 @app.route('/summarize-chat/<chat_id>', methods=['POST'])
 def summarize_chat(chat_id):
     chat = Chat.query.get(chat_id)
@@ -329,16 +269,15 @@ def summarize_chat(chat_id):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                { "role": "system", "content": "You're a helpful assistant that summarizes private jet trip chat logs." },
+                { "role": "system", "content": "You summarize jet charter trip logs." },
                 { "role": "user", "content": prompt }
             ],
             temperature=0.5,
             max_tokens=100
         )
-        summary_text = response.choices[0].message.content.strip()
-        chat.summary = summary_text
+        chat.summary = response.choices[0].message.content.strip()
         db.session.commit()
-        return jsonify({"summary": summary_text}), 200
+        return jsonify({"summary": chat.summary}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
