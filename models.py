@@ -1,5 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, date, time
 import uuid
 
 db = SQLAlchemy()
@@ -60,15 +60,15 @@ class Message(db.Model):
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-# === TRIP LEG MODEL ===
+# === TRIP LEG MODEL (Updated) ===
 class TripLeg(db.Model):
     __tablename__ = 'triplegs'
     id = db.Column(db.String, primary_key=True, default=generate_uuid)
     trip_id = db.Column(db.String, db.ForeignKey('wingtrips.id'), nullable=False)
     from_location = db.Column(db.String, nullable=False)
     to_location = db.Column(db.String, nullable=False)
-    date = db.Column(db.String, nullable=True)
-    time = db.Column(db.String, nullable=True)
+    date = db.Column(db.Date, nullable=True)  # ← updated
+    time = db.Column(db.Time, nullable=True)  # ← updated
 
     # Relationship (optional, for access from WingTrip)
     trip = db.relationship("WingTrip", backref=db.backref("legs", cascade="all, delete-orphan"))
