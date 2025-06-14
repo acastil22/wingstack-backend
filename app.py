@@ -35,28 +35,18 @@ def parse_trip_input():
     if not input_text:
         return jsonify({"error": "No input text provided."}), 400
 
-    prompt = f"""
-You are a smart AI assistant for private jet bookings. A user entered the following trip request:
+    system_prompt = (
+        "You are an AI assistant for private jet bookings. "
+        "ONLY return JSON. Do NOT explain or wrap in markdown. "
+        "Correct misspellings, map locations to airport codes (FAA for US, ICAO for international), "
+        "and return structured legs, passenger count, and budget."
+    )
 
+    user_prompt = f"""
+Input:
 \"\"\"{input_text}\"\"\"
 
-Your job is to:
-1. Detect all airport names, cities, or common travel terms (e.g. "Teterboro", "NYC", "San Jose", "SFO").
-2. Convert each airport or city into a proper airport code:
-   - Use 3-letter FAA codes for U.S. airports (e.g., Teterboro → TEB, Van Nuys → VNY).
-   - Use 4-letter ICAO codes for international airports (e.g., London Heathrow → EGLL).
-3. Use your best judgment to correct spelling errors, formatting issues, or abbreviations (e.g. "teeboroh" → TEB). Assume some entries are not autocorrected — match what you believe the user intended.
-4. Determine the logical travel sequence — even if the user only lists destinations or uses shorthand.
-5. Match dates/times to legs in order. For example, if 3 destinations and 2 dates are listed, assume 2 legs. Use local timezone based on departure airport.
-6. Time format must be 24-hour (e.g. 14:30). Dates must be MM/DD/YYYY.
-7. Extract passenger count and budget as strings if mentioned.
-
-Examples:
-- "teeboroh to oakland and then sjc"
-- "Fly from Van Nuys to Vegas June 12 at 3pm, back on June 14"
-- "TEB to OAK to SJC June 20 at 0900 and June 21 at 1000, 5 pax, budget 70k"
-
-Return only valid JSON like this:
+Expected format:
 {{
   "legs": [
     {{ "from": "KTEB", "to": "KOAK", "date": "06/20/2025", "time": "09:00" }},
@@ -66,29 +56,38 @@ Return only valid JSON like this:
   "budget": "70000"
 }}
 
-If any part is missing or unclear, return it as an empty string (""). No commentary or explanation — just valid JSON.
+Rules:
+- Dates must be MM/DD/YYYY.
+- Times must be 24-hour (e.g. 14:30).
+- If anything is missing or unclear, return empty string.
+- Do not include extra commentary.
 """
 
     try:
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You convert messy human trip requests into structured JSON with FAA/ICAO codes."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
             ],
             temperature=0.3,
             max_tokens=800
         )
 
         content = response.choices[0].message.content.strip()
-        parsed = json.loads(content)
-        return jsonify(parsed), 200
 
-    except json.JSONDecodeError:
-        return jsonify({"error": "AI output was not valid JSON", "raw_output": content}), 500
+        try:
+            parsed = json.loads(content)
+            return jsonify(parsed), 200
+        except json.JSONDecodeError:
+            print("❌ Failed to parse AI output:", content)
+            return jsonify({
+                "error": "AI returned invalid JSON. Try rephrasing.",
+                "raw_output": content  # You can comment this out in production
+            }), 500
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 # === CREATE TRIP + LEGS ===
 @app.route('/trips', methods=['POST'])
