@@ -6,12 +6,10 @@ from datetime import datetime
 import openai
 import json
 
-# PDF and Web scraping:
 from PyPDF2 import PdfReader
 import requests
 from bs4 import BeautifulSoup
 
-# Initialize OpenAI client
 client = openai.OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
 app = Flask(__name__)
@@ -22,13 +20,12 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
-
 @app.route('/')
 def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
 
-# === AI Trip Parsing (AI does AI) ===
+# === AI Trip Parsing (Flexible & Smart) ===
 @app.route('/parse-trip-input', methods=['POST'])
 def parse_trip_input():
     data = request.get_json()
@@ -81,8 +78,6 @@ Respond with valid JSON only.
         )
 
         content = response.choices[0].message.content.strip()
-
-        # Try to parse cleanly
         try:
             parsed = json.loads(content)
             return jsonify(parsed), 200
