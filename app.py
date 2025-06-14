@@ -51,13 +51,16 @@ Expected output:
   "budget": "70000"
 }}
 
-Rules:
-- Use FAA codes for U.S. airports (e.g., TEB), ICAO codes for international (e.g., EGLL).
-- Dates should be returned as MM/DD/YYYY.
-- Times (if provided) should be 24-hour format (e.g., 14:00), otherwise "".
-- If the message says "back to", assume it's returning to the first airport.
-- If any data is missing, use an empty string.
-- Respond ONLY with valid JSON. No extra text or comments.
+Guidelines:
+- Users may include spelling mistakes, partial names, city names, or nonstandard formats.
+- Translate airport/city names into codes:
+    - Use FAA 3-letter codes for U.S. airports (e.g., Teterboro → TEB).
+    - Use ICAO 4-letter codes for international airports (e.g., London Heathrow → EGLL).
+- Dates may appear in various formats — convert all to MM/DD/YYYY.
+- Times (if mentioned) must be 24-hour format (e.g., 14:00). If missing, return "".
+- If the message says "back to", assume it's a return to the first leg's origin.
+- If any value is missing or unknown, return it as an empty string.
+- Return only valid JSON. No additional commentary or text.
 """
 
     try:
