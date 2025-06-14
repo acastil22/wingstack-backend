@@ -7,7 +7,10 @@ import openai
 import json
 
 # Initialize OpenAI
-client = openai.OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+openai_api_key = os.environ.get('OPENAI_API_KEY')
+if not openai_api_key:
+    raise ValueError("Missing OPENAI_API_KEY environment variable.")
+client = openai.OpenAI(api_key=openai_api_key)
 
 # Flask setup
 app = Flask(__name__)
@@ -35,7 +38,7 @@ def parse_trip_input():
     prompt = f"""
 You are a smart AI assistant for private jet bookings. A user entered the following trip request:
 
-\"\"\"{input_text}\"\"\"
+"""{input_text}"""
 
 Your job is to:
 1. Detect all airport names, cities, or common travel terms (e.g. "Teterboro", "NYC", "San Jose", "SFO").
@@ -70,30 +73,19 @@ If any part is missing or unclear, return it as an empty string (""). No comment
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {
-                    "role": "system",
-                    "content": "You convert messy human trip requests into structured JSON with FAA/ICAO codes."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
+                {"role": "system", "content": "You convert messy human trip requests into structured JSON with FAA/ICAO codes."},
+                {"role": "user", "content": prompt}
             ],
             temperature=0.3,
             max_tokens=800
         )
 
         content = response.choices[0].message.content.strip()
+        parsed = json.loads(content)
+        return jsonify(parsed), 200
 
-        try:
-            parsed = json.loads(content)
-            return jsonify(parsed), 200
-        except json.JSONDecodeError:
-            return jsonify({
-                "error": "AI output was not valid JSON",
-                "raw_output": content
-            }), 500
-
+    except json.JSONDecodeError:
+        return jsonify({"error": "AI output was not valid JSON", "raw_output": content}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
