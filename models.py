@@ -14,11 +14,11 @@ class Quote(db.Model):
     trip_id = db.Column(db.String, nullable=False)
     broker_name = db.Column(db.String, nullable=False)
     operator_name = db.Column(db.String, nullable=False)
-    aircraft_type = db.Column(db.String, nullable=False)  # e.g. Turbo, Light, etc.
+    aircraft_type = db.Column(db.String, nullable=False)
     price = db.Column(db.String, nullable=False)
     notes = db.Column(db.String, nullable=True)
-    submitted_by_email = db.Column(db.String, nullable=True)     # who submitted the quote
-    shared_with_emails = db.Column(db.String, nullable=True)     # comma-separated list of shared emails
+    submitted_by_email = db.Column(db.String, nullable=True)
+    shared_with_emails = db.Column(db.String, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # === WINGTRIP MODEL ===
@@ -34,5 +34,28 @@ class WingTrip(db.Model):
     broker_email = db.Column(db.String, nullable=True)
     planner_name = db.Column(db.String, nullable=True)
     planner_email = db.Column(db.String, nullable=True)
-    status = db.Column(db.String, nullable=False, default="pending")  # e.g. pending, quoted, booked, archived
+    status = db.Column(db.String, nullable=False, default="pending")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Chat relationship (optional)
+    chat = db.relationship("Chat", backref="trip", uselist=False, cascade="all, delete-orphan")
+
+# === CHAT MODEL ===
+class Chat(db.Model):
+    __tablename__ = 'chats'
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    trip_id = db.Column(db.String, db.ForeignKey('wingtrips.id'), nullable=False, unique=True)
+    summary = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Messages relationship
+    messages = db.relationship("Message", backref="chat", cascade="all, delete-orphan")
+
+# === MESSAGE MODEL ===
+class Message(db.Model):
+    __tablename__ = 'messages'
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    chat_id = db.Column(db.String, db.ForeignKey('chats.id'), nullable=False)
+    sender_email = db.Column(db.String, nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
