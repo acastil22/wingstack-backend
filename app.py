@@ -91,7 +91,7 @@ Guidelines:
         return jsonify({"error": str(e)}), 500
 
 
-# === TRIP CREATION ===
+# === TRIP CREATION + LEG STORAGE ===
 @app.route('/trips', methods=['POST'])
 def create_trip():
     data = request.get_json()
@@ -99,8 +99,10 @@ def create_trip():
     if not all(field in data for field in required):
         return jsonify({"error": "Missing required fields"}), 400
 
+    trip_id = str(uuid.uuid4())
+
     trip = WingTrip(
-        id=str(uuid.uuid4()),
+        id=trip_id,
         route=data["route"],
         departure_date=data["departure_date"],
         passenger_count=data.get("passenger_count", ""),
@@ -114,9 +116,21 @@ def create_trip():
         created_at=datetime.utcnow()
     )
     db.session.add(trip)
-    db.session.commit()
-    return jsonify({"status": "success", "id": trip.id}), 200
 
+    # Save associated legs if provided
+    legs = data.get("legs", [])
+    for leg in legs:
+        db.session.add(TripLeg(
+            id=str(uuid.uuid4()),
+            trip_id=trip_id,
+            from_location=leg.get("from", ""),
+            to_location=leg.get("to", ""),
+            date=leg.get("date", ""),
+            time=leg.get("time", "")
+        ))
+
+    db.session.commit()
+    return jsonify({"status": "success", "id": trip_id}), 200
 
 # === LIST ALL TRIPS ===
 @app.route('/trips', methods=['GET'])
