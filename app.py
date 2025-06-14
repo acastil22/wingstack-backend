@@ -24,7 +24,7 @@ def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
 
-# === AI Trip Parsing with Intelligent Prompt ===
+# === AI Trip Parsing (Flexible with FAA/ICAO, Dates, Times) ===
 @app.route('/parse-trip-input', methods=['POST'])
 def parse_trip_input():
     data = request.get_json()
@@ -34,23 +34,16 @@ def parse_trip_input():
         return jsonify({"error": "No input text provided."}), 400
 
     prompt = f"""
-You are a private jet assistant. A user submitted the following trip request:
+You are a smart AI assistant for private jet bookings. A user entered the following trip request:
 
 \"\"\"{input_text}\"\"\"
 
-Your job is to extract all trip legs, passenger count, and budget from the message.
+Your job is to extract the trip legs, passenger count, and budget from this freeform text.
 
-Guidelines:
-- Leg routing may be written as: "from A to B", "A - B", "then to C", or "back to D".
-- The first leg will always have a departure point. For "back to", assume return to original origin.
-- Airport codes can be FAA (e.g., TEB) or ICAO (e.g., EGLL). Use FAA for U.S. airports, ICAO for international.
-- Dates can be like 6/20, June 20, or 20th of June. Convert to MM/DD/YYYY.
-- Time format should be 24-hour (e.g., 14:00). If no time is mentioned, leave it as "".
-- Return structured JSON in this format:
-
+Expected output:
 {{
   "legs": [
-    {{ "from": "OAK", "to": "AUS", "date": "06/20/2025", "time": "15:00" }},
+    {{ "from": "OAK", "to": "AUS", "date": "06/20/2025", "time": "" }},
     {{ "from": "AUS", "to": "PBI", "date": "06/25/2025", "time": "" }},
     {{ "from": "PBI", "to": "OAK", "date": "06/30/2025", "time": "" }}
   ],
@@ -58,7 +51,13 @@ Guidelines:
   "budget": "70000"
 }}
 
-Only return valid JSON. No explanations or extra characters.
+Rules:
+- Use FAA codes for U.S. airports (e.g., TEB), ICAO codes for international (e.g., EGLL).
+- Dates should be returned as MM/DD/YYYY.
+- Times (if provided) should be 24-hour format (e.g., 14:00), otherwise "".
+- If the message says "back to", assume it's returning to the first airport.
+- If any data is missing, use an empty string.
+- Respond ONLY with valid JSON. No extra text or comments.
 """
 
     try:
@@ -67,14 +66,14 @@ Only return valid JSON. No explanations or extra characters.
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a smart assistant that converts freeform trip input into structured private jet trip JSON using FAA or ICAO codes."
+                    "content": "You convert messy human trip requests into structured JSON with FAA/ICAO codes."
                 },
                 {
                     "role": "user",
                     "content": prompt
                 }
             ],
-            temperature=0.2,
+            temperature=0.3,
             max_tokens=800
         )
 
