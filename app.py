@@ -31,6 +31,7 @@ def home():
 def parse_trip_input():
     data = request.get_json()
     input_text = data.get("input_text", "").strip()
+    print("📥 Received input text:", input_text)
 
     if not input_text:
         return jsonify({"error": "No input text provided."}), 400
@@ -75,20 +76,22 @@ Rules:
         )
 
         content = response.choices[0].message.content.strip()
+        print("🧠 OpenAI raw output:", content)
 
         try:
             parsed = json.loads(content)
+            print("✅ Parsed JSON:", parsed)
             return jsonify(parsed), 200
         except json.JSONDecodeError:
-            print("❌ Failed to parse AI output:", content)
+            print("❌ JSON decode failed")
             return jsonify({
-                "error": "AI returned invalid JSON. Try rephrasing.",
-                "raw_output": content  # You can comment this out in production
+                "error": "AI returned invalid JSON",
+                "raw_output": content
             }), 500
 
     except Exception as e:
+        print("🔥 Error contacting OpenAI:", str(e))
         return jsonify({"error": str(e)}), 500
-
 # === CREATE TRIP + LEGS ===
 @app.route('/trips', methods=['POST'])
 def create_trip():
