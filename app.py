@@ -152,7 +152,6 @@ def get_trips():
     } for t in trips]
     return jsonify(result), 200
 
-
 # === PATCH TRIP ===
 @app.route('/trips/<trip_id>', methods=['PATCH'])
 def update_trip(trip_id):
@@ -170,6 +169,21 @@ def update_trip(trip_id):
     db.session.commit()
     return jsonify({"message": "Trip updated"}), 200
 
+# === GET TRIP LEGS ===
+@app.route('/trips/<trip_id>/legs', methods=['GET'])
+def get_trip_legs(trip_id):
+    legs = TripLeg.query.filter_by(trip_id=trip_id).all()
+    if not legs:
+        return jsonify({"message": "No legs found for this trip"}), 404
+
+    result = [{
+        "id": leg.id,
+        "from": leg.from_location,
+        "to": leg.to_location,
+        "date": leg.date,
+        "time": leg.time
+    } for leg in legs]
+    return jsonify(result), 200
 
 # === QUOTE CREATION ===
 @app.route('/submit-quote', methods=['POST'])
