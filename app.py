@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from models import db, Quote, WingTrip, Chat, Message, TripLeg
+from models import db, Quote, WingTrip, Chat, Message, TripLeg, User
 import uuid
 import os
 from datetime import datetime
@@ -93,7 +93,36 @@ Instructions:
     except Exception as e:
         print("🔥 Error contacting OpenAI:", str(e))
         return jsonify({"error": str(e)}), 500
-        
+
+# === Save Preferred Partners ===
+@app.route('/save-preferred-partners', methods=['POST'])
+def save_preferred_partners():
+    data = request.get_json()
+    email = data.get("planner_email")
+    partners = data.get("partners", [])
+
+    if not email:
+        return jsonify({"error": "Missing planner email."}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({"error": "User not found."}), 404
+
+    user.preferred_partners = json.dumps(partners)
+    db.session.commit()
+    return jsonify({"status": "success"}), 200
+
+# === Get Registered Partners ===
+@app.route('/registered-partners', methods=['GET'])
+def registered_partners():
+    partners = User.query.filter_by(role="partner").all()
+    return jsonify([{
+        "email": p.email,
+        "name": p.name
+    } for p in partners]), 200
+
+# [The rest of your existing routes follow... without change]
+
 # === CREATE TRIP + LEGS ===
 @app.route('/trips', methods=['POST'])
 def create_trip():
