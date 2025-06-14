@@ -64,7 +64,7 @@ Return only valid JSON like this:
   "budget": "70000"
 }}
 
-If any part is missing, return it as an empty string. Do not return explanation — only valid JSON.
+If any part is missing or unclear, return it as an empty string (""). No commentary or explanation — just valid JSON.
 """
 
     try:
@@ -85,15 +85,18 @@ If any part is missing, return it as an empty string. Do not return explanation 
         )
 
         content = response.choices[0].message.content.strip()
+
         try:
             parsed = json.loads(content)
             return jsonify(parsed), 200
         except json.JSONDecodeError:
-            return jsonify({"error": "AI output was not valid JSON", "raw": content}), 500
+            return jsonify({
+                "error": "AI output was not valid JSON",
+                "raw_output": content
+            }), 500
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 # === TRIP CREATION + LEG STORAGE ===
 @app.route('/trips', methods=['POST'])
