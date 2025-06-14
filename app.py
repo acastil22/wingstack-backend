@@ -38,7 +38,7 @@ def parse_trip_input():
     prompt = f"""
 You are a smart AI assistant for private jet bookings. A user entered the following trip request:
 
-"""{input_text}"""
+\"\"\"{input_text}\"\"\"
 
 Your job is to:
 1. Detect all airport names, cities, or common travel terms (e.g. "Teterboro", "NYC", "San Jose", "SFO").
