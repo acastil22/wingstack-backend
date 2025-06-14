@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from models import db, Quote, WingTrip, Chat, Message
+from models import db, Quote, WingTrip, Chat, Message, TripLeg
 import uuid
 import os
 from datetime import datetime
@@ -38,29 +38,33 @@ You are a smart AI assistant for private jet bookings. A user entered the follow
 
 \"\"\"{input_text}\"\"\"
 
-Your job is to extract the trip legs, passenger count, and budget from this freeform text.
+Your job is to:
+1. Detect all airport names, cities, or common travel terms (e.g. "Teterboro", "NYC", "San Jose", "SFO").
+2. Convert each airport or city into a proper airport code:
+   - Use 3-letter FAA codes for U.S. airports (e.g., Teterboro → TEB, Van Nuys → VNY).
+   - Use 4-letter ICAO codes for international airports (e.g., London Heathrow → EGLL).
+3. Use your best judgment to correct spelling errors, formatting issues, or abbreviations (e.g. "teeboroh" → TEB). Assume some entries are not autocorrected — match what you believe the user intended.
+4. Determine the logical travel sequence — even if the user only lists destinations or uses shorthand.
+5. Match dates/times to legs in order. For example, if 3 destinations and 2 dates are listed, assume 2 legs. Use local timezone based on departure airport.
+6. Time format must be 24-hour (e.g. 14:30). Dates must be MM/DD/YYYY.
+7. Extract passenger count and budget as strings if mentioned.
 
-Expected output:
+Examples:
+- "teeboroh to oakland and then sjc"
+- "Fly from Van Nuys to Vegas June 12 at 3pm, back on June 14"
+- "TEB to OAK to SJC June 20 at 0900 and June 21 at 1000, 5 pax, budget 70k"
+
+Return only valid JSON like this:
 {{
   "legs": [
-    {{ "from": "OAK", "to": "AUS", "date": "06/20/2025", "time": "" }},
-    {{ "from": "AUS", "to": "PBI", "date": "06/25/2025", "time": "" }},
-    {{ "from": "PBI", "to": "OAK", "date": "06/30/2025", "time": "" }}
+    {{ "from": "KTEB", "to": "KOAK", "date": "06/20/2025", "time": "09:00" }},
+    {{ "from": "KOAK", "to": "KSJC", "date": "06/21/2025", "time": "10:00" }}
   ],
   "passenger_count": "5",
   "budget": "70000"
 }}
 
-Guidelines:
-- Users may include spelling mistakes, partial names, city names, or nonstandard formats.
-- Translate airport/city names into codes:
-    - Use FAA 3-letter codes for U.S. airports (e.g., Teterboro → TEB).
-    - Use ICAO 4-letter codes for international airports (e.g., London Heathrow → EGLL).
-- Dates may appear in various formats — convert all to MM/DD/YYYY.
-- Times (if mentioned) must be 24-hour format (e.g., 14:00). If missing, return "".
-- If the message says "back to", assume it's a return to the first leg's origin.
-- If any value is missing or unknown, return it as an empty string.
-- Return only valid JSON. No additional commentary or text.
+If any part is missing, return it as an empty string. Do not return explanation — only valid JSON.
 """
 
     try:
@@ -132,6 +136,7 @@ def create_trip():
     db.session.commit()
     return jsonify({"status": "success", "id": trip_id}), 200
 
+
 # === LIST ALL TRIPS ===
 @app.route('/trips', methods=['GET'])
 def get_trips():
@@ -152,6 +157,7 @@ def get_trips():
     } for t in trips]
     return jsonify(result), 200
 
+
 # === PATCH TRIP ===
 @app.route('/trips/<trip_id>', methods=['PATCH'])
 def update_trip(trip_id):
@@ -169,6 +175,7 @@ def update_trip(trip_id):
     db.session.commit()
     return jsonify({"message": "Trip updated"}), 200
 
+
 # === GET TRIP LEGS ===
 @app.route('/trips/<trip_id>/legs', methods=['GET'])
 def get_trip_legs(trip_id):
@@ -184,6 +191,7 @@ def get_trip_legs(trip_id):
         "time": leg.time
     } for leg in legs]
     return jsonify(result), 200
+
 
 # === QUOTE CREATION ===
 @app.route('/submit-quote', methods=['POST'])
