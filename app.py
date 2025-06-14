@@ -5,7 +5,6 @@ import os
 from datetime import datetime
 import openai
 import json
-
 from PyPDF2 import PdfReader
 import requests
 from bs4 import BeautifulSoup
@@ -25,7 +24,7 @@ def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
 
-# === AI Trip Parsing (Flexible & Smart) ===
+# === AI Trip Parsing with Time and ICAO Logic ===
 @app.route('/parse-trip-input', methods=['POST'])
 def parse_trip_input():
     data = request.get_json()
@@ -35,29 +34,27 @@ def parse_trip_input():
         return jsonify({"error": "No input text provided."}), 400
 
     prompt = f"""
-You are a private jet assistant. A human user just entered this freeform trip request:
+You are a private jet assistant. A user submitted this freeform request:
 
-\"\"\"{input_text}\"\"\"
+"""{input_text}"""
 
-Your job is to intelligently understand the routing, travel dates, number of passengers, and budget if mentioned. Return a pure JSON object like this:
-
+Extract structured JSON in this format:
 {{
   "legs": [
-    {{ "from": "OAK", "to": "MRY", "date": "2025-07-12" }},
-    {{ "from": "MRY", "to": "LAS", "date": "2025-07-18" }}
+    {{ "from": "TEB", "to": "EGLL", "date": "07/12/2025", "time": "14:00" }},
+    {{ "from": "EGLL", "to": "OAK", "date": "07/15/2025", "time": "" }}
   ],
   "passenger_count": "5",
-  "budget": "50000"
+  "budget": "60000"
 }}
 
 Rules:
-- Be flexible. Extract as many trip legs as you find.
-- Dates can be in any format (e.g., 7/12 or July 12).
-- Use 3-letter airport codes if mentioned, or city names.
-- If anything is missing, set that field as an empty string.
-- Return ONLY the JSON. No commentary or extra text.
-
-Respond with valid JSON only.
+- Use FAA codes for U.S. airports (e.g., TEB).
+- Use ICAO codes for international airports (e.g., EGLL).
+- Date format must be MM/DD/YYYY.
+- Time format must be 24-hour (HH:MM). Use "" if unknown.
+- Leave any unknown value as an empty string.
+- Respond with ONLY valid JSON. No extra text.
 """
 
     try:
@@ -66,7 +63,7 @@ Respond with valid JSON only.
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a smart assistant for private jet bookings. You extract structured JSON trip info from unstructured user messages."
+                    "content": "You're a smart assistant that converts trip requests into valid structured JSON using ICAO or FAA codes."
                 },
                 {
                     "role": "user",
@@ -74,7 +71,7 @@ Respond with valid JSON only.
                 }
             ],
             temperature=0.2,
-            max_tokens=700
+            max_tokens=800
         )
 
         content = response.choices[0].message.content.strip()
@@ -82,7 +79,7 @@ Respond with valid JSON only.
             parsed = json.loads(content)
             return jsonify(parsed), 200
         except json.JSONDecodeError:
-            return jsonify({"error": "AI output not valid JSON", "raw": content}), 500
+            return jsonify({"error": "AI output was not valid JSON", "raw": content}), 500
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -243,11 +240,11 @@ def get_or_create_chat(trip_id):
 @app.route('/messages/<chat_id>', methods=['GET'])
 def get_messages(chat_id):
     messages = Message.query.filter_by(chat_id=chat_id).order_by(Message.timestamp).all()
-    return jsonify([{
-        "id": m.id,
-        "sender_email": m.sender_email,
-        "content": m.content,
-        "timestamp": m.timestamp.isoformat()
+    return jsonify([{ 
+        "id": m.id, 
+        "sender_email": m.sender_email, 
+        "content": m.content, 
+        "timestamp": m.timestamp.isoformat() 
     } for m in messages])
 
 
