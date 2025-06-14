@@ -25,7 +25,6 @@ with app.app_context():
 def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
-
 # === AI PARSER ===
 @app.route('/parse-trip-input', methods=['POST'])
 def parse_trip_input():
@@ -38,30 +37,32 @@ def parse_trip_input():
 
     system_prompt = (
         "You are an AI assistant for private jet bookings. "
-        "ONLY return JSON. Do NOT explain or wrap in markdown. "
-        "Correct misspellings, map locations to airport codes (FAA for US, ICAO for international), "
-        "and return structured legs, passenger count, and budget."
+        "Your job is to extract trip details from natural language into a strict JSON format. "
+        "Correct spelling, infer IATA airport codes (KOAK for Oakland, MMSD for Cabo San Lucas), "
+        "convert dates to MM/DD/YYYY, and extract passenger count and budget if mentioned."
+        "If missing, use an empty string. Do not return explanations. Only output valid raw JSON."
     )
 
     user_prompt = f"""
-Input:
-\"\"\"{input_text}\"\"\"
+Input: "{input_text}"
 
 Expected format:
 {{
   "legs": [
-    {{ "from": "KTEB", "to": "KOAK", "date": "06/20/2025", "time": "09:00" }},
-    {{ "from": "KOAK", "to": "KSJC", "date": "06/21/2025", "time": "10:00" }}
+    {{ "from": "KTEB", "to": "KOAK", "date": "06/20/2025", "time": "" }}
   ],
   "passenger_count": "5",
-  "budget": "70000"
+  "budget": "50000"
 }}
 
-Rules:
-- Dates must be MM/DD/YYYY.
-- Times must be 24-hour (e.g. 14:30).
-- If anything is missing or unclear, return empty string.
-- Do not include extra commentary.
+Instructions:
+- For each leg, include "from", "to", "date", and empty "time".
+- Use IATA for US airports, ICAO for international if known. Examples:
+    - "Oakland" -> "KOAK"
+    - "Cabo" or "Cabo San Lucas" -> "MMSD" or "MMSL"
+- Dates must be MM/DD/YYYY. If year is missing, assume current year.
+- Use empty string "" if passenger_count or budget is not included.
+- Never include commentary, formatting, or markdown — just JSON.
 """
 
     try:
@@ -71,8 +72,8 @@ Rules:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.3,
-            max_tokens=800
+            temperature=0.2,
+            max_tokens=600
         )
 
         content = response.choices[0].message.content.strip()
@@ -92,6 +93,7 @@ Rules:
     except Exception as e:
         print("🔥 Error contacting OpenAI:", str(e))
         return jsonify({"error": str(e)}), 500
+        
 # === CREATE TRIP + LEGS ===
 @app.route('/trips', methods=['POST'])
 def create_trip():
