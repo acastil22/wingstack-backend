@@ -27,6 +27,47 @@ def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
 
+# === AI Trip Parsing ===
+@app.route('/parse-trip-input', methods=['POST'])
+def parse_trip_input():
+    data = request.get_json()
+    raw_text = data.get("input", "")
+
+    if not raw_text:
+        return jsonify({"error": "Missing input text"}), 400
+
+    prompt = f"""
+You are a private jet assistant. Extract ALL trip legs from the input below and return them in structured JSON.
+
+Input:
+---
+{raw_text}
+---
+
+Respond only in this format:
+{
+  "legs": [
+    {"from": "OAK", "to": "TEB", "date": "2025-07-01"},
+    {"from": "TEB", "to": "CHS", "date": "2025-07-02"}
+  ],
+  "passenger_count": "5",
+  "budget": "$50000"
+}
+If any fields are unknown, use blank values.
+"""
+
+    try:
+        completion = client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
+        )
+        parsed_json = json.loads(completion.choices[0].message.content.strip())
+        return jsonify(parsed_json)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # === TRIP CREATION ===
 @app.route('/trips', methods=['POST'])
 def create_trip():
