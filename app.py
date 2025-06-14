@@ -22,48 +22,73 @@ db.init_app(app)
 with app.app_context():
     db.create_all()
 
+
 @app.route('/')
 def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
 
-# === AI Trip Parsing ===
+# === AI Trip Parsing (AI does AI) ===
 @app.route('/parse-trip-input', methods=['POST'])
 def parse_trip_input():
     data = request.get_json()
-    raw_text = data.get("input", "")
+    input_text = data.get("input_text", "").strip()
 
-    if not raw_text:
-        return jsonify({"error": "Missing input text"}), 400
+    if not input_text:
+        return jsonify({"error": "No input text provided."}), 400
 
     prompt = f"""
-You are a private jet assistant. Extract ALL trip legs from the input below and return them in structured JSON.
+You are a private jet assistant. A human user just entered this freeform trip request:
 
-Input:
----
-{raw_text}
----
+\"\"\"{input_text}\"\"\"
 
-Respond only in this format:
-{
+Your job is to intelligently understand the routing, travel dates, number of passengers, and budget if mentioned. Return a pure JSON object like this:
+
+{{
   "legs": [
-    {"from": "OAK", "to": "TEB", "date": "2025-07-01"},
-    {"from": "TEB", "to": "CHS", "date": "2025-07-02"}
+    {{ "from": "OAK", "to": "MRY", "date": "2025-07-12" }},
+    {{ "from": "MRY", "to": "LAS", "date": "2025-07-18" }}
   ],
   "passenger_count": "5",
-  "budget": "$50000"
-}
-If any fields are unknown, use blank values.
+  "budget": "50000"
+}}
+
+Rules:
+- Be flexible. Extract as many trip legs as you find.
+- Dates can be in any format (e.g., 7/12 or July 12).
+- Use 3-letter airport codes if mentioned, or city names.
+- If anything is missing, set that field as an empty string.
+- Return ONLY the JSON. No commentary or extra text.
+
+Respond with valid JSON only.
 """
 
     try:
-        completion = client.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a smart assistant for private jet bookings. You extract structured JSON trip info from unstructured user messages."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.2,
+            max_tokens=700
         )
-        parsed_json = json.loads(completion.choices[0].message.content.strip())
-        return jsonify(parsed_json)
+
+        content = response.choices[0].message.content.strip()
+
+        # Try to parse cleanly
+        try:
+            parsed = json.loads(content)
+            return jsonify(parsed), 200
+        except json.JSONDecodeError:
+            return jsonify({"error": "AI output not valid JSON", "raw": content}), 500
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
