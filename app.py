@@ -24,7 +24,7 @@ def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
 
-# === AI Trip Parsing with Time and ICAO Logic ===
+# === AI Trip Parsing with Intelligent Prompt ===
 @app.route('/parse-trip-input', methods=['POST'])
 def parse_trip_input():
     data = request.get_json()
@@ -34,27 +34,31 @@ def parse_trip_input():
         return jsonify({"error": "No input text provided."}), 400
 
     prompt = f"""
-You are a private jet assistant. A user submitted this freeform request:
+You are a private jet assistant. A user submitted the following trip request:
 
-"""{input_text}"""
+\"\"\"{input_text}\"\"\"
 
-Extract structured JSON in this format:
+Your job is to extract all trip legs, passenger count, and budget from the message.
+
+Guidelines:
+- Leg routing may be written as: "from A to B", "A - B", "then to C", or "back to D".
+- The first leg will always have a departure point. For "back to", assume return to original origin.
+- Airport codes can be FAA (e.g., TEB) or ICAO (e.g., EGLL). Use FAA for U.S. airports, ICAO for international.
+- Dates can be like 6/20, June 20, or 20th of June. Convert to MM/DD/YYYY.
+- Time format should be 24-hour (e.g., 14:00). If no time is mentioned, leave it as "".
+- Return structured JSON in this format:
+
 {{
   "legs": [
-    {{ "from": "TEB", "to": "EGLL", "date": "07/12/2025", "time": "14:00" }},
-    {{ "from": "EGLL", "to": "OAK", "date": "07/15/2025", "time": "" }}
+    {{ "from": "OAK", "to": "AUS", "date": "06/20/2025", "time": "15:00" }},
+    {{ "from": "AUS", "to": "PBI", "date": "06/25/2025", "time": "" }},
+    {{ "from": "PBI", "to": "OAK", "date": "06/30/2025", "time": "" }}
   ],
   "passenger_count": "5",
-  "budget": "60000"
+  "budget": "70000"
 }}
 
-Rules:
-- Use FAA codes for U.S. airports (e.g., TEB).
-- Use ICAO codes for international airports (e.g., EGLL).
-- Date format must be MM/DD/YYYY.
-- Time format must be 24-hour (HH:MM). Use "" if unknown.
-- Leave any unknown value as an empty string.
-- Respond with ONLY valid JSON. No extra text.
+Only return valid JSON. No explanations or extra characters.
 """
 
     try:
@@ -63,7 +67,7 @@ Rules:
             messages=[
                 {
                     "role": "system",
-                    "content": "You're a smart assistant that converts trip requests into valid structured JSON using ICAO or FAA codes."
+                    "content": "You are a smart assistant that converts freeform trip input into structured private jet trip JSON using FAA or ICAO codes."
                 },
                 {
                     "role": "user",
