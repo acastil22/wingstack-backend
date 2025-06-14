@@ -6,13 +6,13 @@ from datetime import datetime
 import openai
 import json
 
-# Initialize OpenAI
+# === OpenAI Setup ===
 openai_api_key = os.environ.get('OPENAI_API_KEY')
 if not openai_api_key:
     raise ValueError("Missing OPENAI_API_KEY environment variable.")
 client = openai.OpenAI(api_key=openai_api_key)
 
-# Flask setup
+# === Flask Setup ===
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -30,39 +30,25 @@ def home():
 def parse_trip_input():
     data = request.get_json()
     input_text = data.get("input_text", "").strip()
-    print("📥 Received input text:", input_text)
-
     if not input_text:
         return jsonify({"error": "No input text provided."}), 400
 
     system_prompt = (
         "You are an AI assistant for private jet bookings. "
-        "Your job is to extract trip details from natural language into a strict JSON format. "
-        "Correct spelling, infer IATA airport codes (KOAK for Oakland, MMSD for Cabo San Lucas), "
-        "convert dates to MM/DD/YYYY, and extract passenger count and budget if mentioned."
-        "If missing, use an empty string. Do not return explanations. Only output valid raw JSON."
+        "Extract trip details from natural language into a strict JSON format. "
+        "Correct spelling, infer IATA codes (KOAK = Oakland, MMSD = Cabo), convert dates to MM/DD/YYYY. "
+        "Include legs, passenger count, and budget if available. Use empty strings if missing."
     )
 
     user_prompt = f"""
 Input: "{input_text}"
 
-Expected format:
+Format:
 {{
-  "legs": [
-    {{ "from": "KTEB", "to": "KOAK", "date": "06/20/2025", "time": "" }}
-  ],
+  "legs": [{{ "from": "KTEB", "to": "KOAK", "date": "06/20/2025", "time": "" }}],
   "passenger_count": "5",
   "budget": "50000"
 }}
-
-Instructions:
-- For each leg, include "from", "to", "date", and empty "time".
-- Use IATA for US airports, ICAO for international if known. Examples:
-    - "Oakland" -> "KOAK"
-    - "Cabo" or "Cabo San Lucas" -> "MMSD" or "MMSL"
-- Dates must be MM/DD/YYYY. If year is missing, assume current year.
-- Use empty string "" if passenger_count or budget is not included.
-- Never include commentary, formatting, or markdown — just JSON.
 """
 
     try:
@@ -75,23 +61,13 @@ Instructions:
             temperature=0.2,
             max_tokens=600
         )
-
         content = response.choices[0].message.content.strip()
-        print("🧠 OpenAI raw output:", content)
+        parsed = json.loads(content)
+        return jsonify(parsed), 200
 
-        try:
-            parsed = json.loads(content)
-            print("✅ Parsed JSON:", parsed)
-            return jsonify(parsed), 200
-        except json.JSONDecodeError:
-            print("❌ JSON decode failed")
-            return jsonify({
-                "error": "AI returned invalid JSON",
-                "raw_output": content
-            }), 500
-
+    except json.JSONDecodeError:
+        return jsonify({"error": "Invalid JSON", "raw_output": content}), 500
     except Exception as e:
-        print("🔥 Error contacting OpenAI:", str(e))
         return jsonify({"error": str(e)}), 500
 
 # === Save Preferred Partners ===
@@ -100,13 +76,12 @@ def save_preferred_partners():
     data = request.get_json()
     email = data.get("planner_email")
     partners = data.get("partners", [])
-
     if not email:
-        return jsonify({"error": "Missing planner email."}), 400
+        return jsonify({"error": "Missing planner email"}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user:
-        return jsonify({"error": "User not found."}), 404
+        return jsonify({"error": "User not found"}), 404
 
     user.preferred_partners = json.dumps(partners)
     db.session.commit()
@@ -116,14 +91,9 @@ def save_preferred_partners():
 @app.route('/registered-partners', methods=['GET'])
 def registered_partners():
     partners = User.query.filter_by(role="partner").all()
-    return jsonify([{
-        "email": p.email,
-        "name": p.name
-    } for p in partners]), 200
+    return jsonify([{"email": p.email, "name": p.name} for p in partners]), 200
 
-# [The rest of your existing routes follow... without change]
-
-# === CREATE TRIP + LEGS ===
+# === CREATE TRIP ===
 @app.route('/trips', methods=['POST'])
 def create_trip():
     data = request.get_json()
@@ -139,8 +109,8 @@ def create_trip():
         passenger_count=data.get("passenger_count", ""),
         size=data.get("size", ""),
         budget=data.get("budget", ""),
-        broker_name=data.get("broker_name", ""),
-        broker_email=data.get("broker_email", ""),
+        broker_name=data.get("broker_name", ""),  # treated as partner name
+        broker_email=data.get("broker_email", ""),  # treated as partner email
         planner_name=data.get("planner_name", ""),
         planner_email=data.get("planner_email", ""),
         status=data.get("status", "pending"),
@@ -152,21 +122,19 @@ def create_trip():
         try:
             date_obj = datetime.strptime(leg.get("date", ""), "%m/%d/%Y").date() if leg.get("date") else None
             time_obj = datetime.strptime(leg.get("time", ""), "%H:%M").time() if leg.get("time") else None
+            db.session.add(TripLeg(
+                id=str(uuid.uuid4()),
+                trip_id=trip_id,
+                from_location=leg.get("from", ""),
+                to_location=leg.get("to", ""),
+                date=date_obj,
+                time=time_obj
+            ))
         except ValueError:
             return jsonify({"error": f"Invalid leg date/time format: {leg}"}), 400
 
-        db.session.add(TripLeg(
-            id=str(uuid.uuid4()),
-            trip_id=trip_id,
-            from_location=leg.get("from", ""),
-            to_location=leg.get("to", ""),
-            date=date_obj,
-            time=time_obj
-        ))
-
     db.session.commit()
     return jsonify({"status": "success", "id": trip_id}), 200
-
 
 # === GET ALL TRIPS ===
 @app.route('/trips', methods=['GET'])
@@ -187,35 +155,30 @@ def get_trips():
         "created_at": t.created_at.isoformat()
     } for t in trips]), 200
 
-
 # === GET TRIP LEGS ===
 @app.route('/trips/<trip_id>/legs', methods=['GET'])
 def get_trip_legs(trip_id):
     legs = TripLeg.query.filter_by(trip_id=trip_id).all()
-    if not legs:
-        return jsonify({"message": "No legs found"}), 404
-
     return jsonify([{
-        "id": leg.id,
-        "from": leg.from_location,
-        "to": leg.to_location,
-        "date": leg.date.isoformat() if leg.date else "",
-        "time": leg.time.strftime("%H:%M") if leg.time else ""
-    } for leg in legs]), 200
-
+        "id": l.id,
+        "from": l.from_location,
+        "to": l.to_location,
+        "date": l.date.isoformat() if l.date else "",
+        "time": l.time.strftime("%H:%M") if l.time else ""
+    } for l in legs]), 200
 
 # === SUBMIT QUOTE ===
 @app.route('/submit-quote', methods=['POST'])
 def submit_quote():
     data = request.get_json()
     required = ["trip_id", "broker_name", "operator_name", "aircraft_type", "price"]
-    if not all(field in data for field in required):
+    if not all(k in data for k in required):
         return jsonify({"error": "Missing required fields"}), 400
 
     quote = Quote(
         id=str(uuid.uuid4()),
         trip_id=data["trip_id"],
-        broker_name=data["broker_name"],
+        broker_name=data["broker_name"],  # partner name
         operator_name=data["operator_name"],
         aircraft_type=data["aircraft_type"],
         price=data["price"],
@@ -227,7 +190,6 @@ def submit_quote():
     db.session.add(quote)
     db.session.commit()
     return jsonify({"status": "success", "id": quote.id}), 200
-
 
 # === GET QUOTES BY EMAIL ===
 @app.route('/quotes/by-email', methods=['GET'])
@@ -254,8 +216,7 @@ def get_quotes_by_email():
         "created_at": q.created_at.isoformat()
     } for q in quotes]), 200
 
-
-# === CHAT LOGS & MESSAGES ===
+# === CHAT ===
 @app.route('/chat/<trip_id>', methods=['GET'])
 def get_or_create_chat(trip_id):
     chat = Chat.query.filter_by(trip_id=trip_id).first()
@@ -270,17 +231,15 @@ def get_or_create_chat(trip_id):
         "created_at": chat.created_at.isoformat()
     })
 
-
 @app.route('/messages/<chat_id>', methods=['GET'])
 def get_messages(chat_id):
     messages = Message.query.filter_by(chat_id=chat_id).order_by(Message.timestamp).all()
-    return jsonify([{ 
-        "id": m.id, 
-        "sender_email": m.sender_email, 
-        "content": m.content, 
-        "timestamp": m.timestamp.isoformat() 
+    return jsonify([{
+        "id": m.id,
+        "sender_email": m.sender_email,
+        "content": m.content,
+        "timestamp": m.timestamp.isoformat()
     } for m in messages]), 200
-
 
 @app.route('/messages', methods=['POST'])
 def post_message():
@@ -298,7 +257,6 @@ def post_message():
     db.session.add(msg)
     db.session.commit()
     return jsonify({"message": "Message posted", "id": msg.id}), 200
-
 
 @app.route('/summarize-chat/<chat_id>', methods=['POST'])
 def summarize_chat(chat_id):
@@ -329,7 +287,6 @@ def summarize_chat(chat_id):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
