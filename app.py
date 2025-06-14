@@ -11,13 +11,12 @@ from PyPDF2 import PdfReader
 import requests
 from bs4 import BeautifulSoup
 
-# Initialize OpenAI client (v1+ API)
+# Initialize OpenAI client
 client = openai.OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db.init_app(app)
 
 with app.app_context():
@@ -26,6 +25,7 @@ with app.app_context():
 @app.route('/')
 def home():
     return jsonify({"message": "WingStack backend is alive!"})
+
 
 # === TRIP CREATION ===
 @app.route('/trips', methods=['POST'])
@@ -53,6 +53,7 @@ def create_trip():
     db.session.commit()
     return jsonify({"status": "success", "id": trip.id}), 200
 
+
 # === LIST ALL TRIPS ===
 @app.route('/trips', methods=['GET'])
 def get_trips():
@@ -73,6 +74,7 @@ def get_trips():
     } for t in trips]
     return jsonify(result), 200
 
+
 # === PATCH TRIP ===
 @app.route('/trips/<trip_id>', methods=['PATCH'])
 def update_trip(trip_id):
@@ -89,6 +91,7 @@ def update_trip(trip_id):
     trip.status = data.get("status", trip.status)
     db.session.commit()
     return jsonify({"message": "Trip updated"}), 200
+
 
 # === QUOTE CREATION ===
 @app.route('/submit-quote', methods=['POST'])
@@ -114,6 +117,7 @@ def submit_quote():
     db.session.commit()
     return jsonify({"status": "success", "id": quote.id}), 200
 
+
 # === GET QUOTES ===
 @app.route('/quotes', methods=['GET'])
 def get_quotes():
@@ -131,6 +135,7 @@ def get_quotes():
         "created_at": q.created_at
     } for q in quotes]
     return jsonify(result), 200
+
 
 @app.route('/quotes/by-email', methods=['GET'])
 def get_quotes_by_email():
@@ -157,6 +162,7 @@ def get_quotes_by_email():
     } for q in quotes]
     return jsonify(result), 200
 
+
 # === CHAT FEATURES ===
 @app.route('/chat/<trip_id>', methods=['GET'])
 def get_or_create_chat(trip_id):
@@ -172,6 +178,7 @@ def get_or_create_chat(trip_id):
         "created_at": chat.created_at.isoformat()
     })
 
+
 @app.route('/messages/<chat_id>', methods=['GET'])
 def get_messages(chat_id):
     messages = Message.query.filter_by(chat_id=chat_id).order_by(Message.timestamp).all()
@@ -181,6 +188,7 @@ def get_messages(chat_id):
         "content": m.content,
         "timestamp": m.timestamp.isoformat()
     } for m in messages])
+
 
 @app.route('/messages', methods=['POST'])
 def post_message():
@@ -198,6 +206,40 @@ def post_message():
     db.session.add(msg)
     db.session.commit()
     return jsonify({"message": "Message posted", "id": msg.id}), 200
+
+
+# === CHAT SUMMARY (AI) ===
+@app.route('/summarize-chat/<chat_id>', methods=['POST'])
+def summarize_chat(chat_id):
+    chat = Chat.query.get(chat_id)
+    if not chat:
+        return jsonify({"error": "Chat not found"}), 404
+
+    messages = Message.query.filter_by(chat_id=chat_id).order_by(Message.timestamp).all()
+    if not messages:
+        return jsonify({"error": "No messages found"}), 400
+
+    content = "\n".join([f"{m.sender_email}: {m.content}" for m in messages])
+    prompt = f"Summarize this private jet trip conversation:\n\n{content}\n\nSummary:"
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                { "role": "system", "content": "You're a helpful assistant that summarizes private jet trip chat logs." },
+                { "role": "user", "content": prompt }
+            ],
+            temperature=0.5,
+            max_tokens=100
+        )
+        summary_text = response.choices[0].message.content.strip()
+        chat.summary = summary_text
+        db.session.commit()
+        return jsonify({"summary": summary_text}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
