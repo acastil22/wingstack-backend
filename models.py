@@ -7,6 +7,16 @@ db = SQLAlchemy()
 def generate_uuid():
     return str(uuid.uuid4())
 
+# === USER MODEL (for planners and partners) ===
+class User(db.Model):
+    __tablename__ = 'users'
+    id = db.Column(db.String, primary_key=True, default=generate_uuid)
+    email = db.Column(db.String, unique=True, nullable=False)
+    name = db.Column(db.String, nullable=True)
+    role = db.Column(db.String, nullable=False)  # 'planner', 'partner', etc.
+    preferred_partners = db.Column(db.Text, nullable=True)  # JSON-encoded list of emails
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 # === QUOTE MODEL ===
 class Quote(db.Model):
     __tablename__ = 'quotes'
@@ -37,7 +47,6 @@ class WingTrip(db.Model):
     status = db.Column(db.String, nullable=False, default="pending")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Chat relationship (optional)
     chat = db.relationship("Chat", backref="trip", uselist=False, cascade="all, delete-orphan")
 
 # === CHAT MODEL ===
@@ -48,7 +57,6 @@ class Chat(db.Model):
     summary = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Messages relationship
     messages = db.relationship("Message", backref="chat", cascade="all, delete-orphan")
 
 # === MESSAGE MODEL ===
@@ -60,15 +68,14 @@ class Message(db.Model):
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
 
-# === TRIP LEG MODEL (Updated) ===
+# === TRIP LEG MODEL ===
 class TripLeg(db.Model):
     __tablename__ = 'triplegs'
     id = db.Column(db.String, primary_key=True, default=generate_uuid)
     trip_id = db.Column(db.String, db.ForeignKey('wingtrips.id'), nullable=False)
     from_location = db.Column(db.String, nullable=False)
     to_location = db.Column(db.String, nullable=False)
-    date = db.Column(db.Date, nullable=True)  # ← updated
-    time = db.Column(db.Time, nullable=True)  # ← updated
+    date = db.Column(db.Date, nullable=True)
+    time = db.Column(db.Time, nullable=True)
 
-    # Relationship (optional, for access from WingTrip)
     trip = db.relationship("WingTrip", backref=db.backref("legs", cascade="all, delete-orphan"))
