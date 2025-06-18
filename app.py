@@ -41,7 +41,7 @@ def parse_trip_input():
     )
 
     user_prompt = f"""
-Input: "{input_text}"
+Input: \"{input_text}\"
 
 Format:
 {{
@@ -109,8 +109,8 @@ def create_trip():
         passenger_count=data.get("passenger_count", ""),
         size=data.get("size", ""),
         budget=data.get("budget", ""),
-        broker_name=data.get("broker_name", ""),  # treated as partner name
-        broker_email=data.get("broker_email", ""),  # treated as partner email
+        broker_name=data.get("broker_name", ""),
+        broker_email=data.get("broker_email", ""),
         planner_name=data.get("planner_name", ""),
         planner_email=data.get("planner_email", ""),
         status=data.get("status", "pending"),
@@ -140,7 +140,7 @@ def create_trip():
 @app.route('/trips', methods=['GET'])
 def get_trips():
     trips = WingTrip.query.all()
-    return jsonify([{
+    return jsonify([{**{
         "id": t.id,
         "route": t.route,
         "departure_date": t.departure_date,
@@ -153,7 +153,7 @@ def get_trips():
         "planner_email": t.planner_email,
         "status": t.status,
         "created_at": t.created_at.isoformat()
-    } for t in trips]), 200
+    }} for t in trips]), 200
 
 # === GET TRIP LEGS ===
 @app.route('/trips/<trip_id>/legs', methods=['GET'])
@@ -167,6 +167,36 @@ def get_trip_legs(trip_id):
         "time": l.time.strftime("%H:%M") if l.time else ""
     } for l in legs]), 200
 
+# === ARCHIVE TRIP ===
+@app.route('/trips/archive/<trip_id>', methods=['POST'])
+def archive_trip(trip_id):
+    trip = WingTrip.query.get(trip_id)
+    if not trip:
+        return jsonify({"error": "Trip not found"}), 404
+    trip.status = "archived"
+    db.session.commit()
+    return jsonify({"status": "archived"}), 200
+
+# === RESTORE TRIP ===
+@app.route('/trips/restore/<trip_id>', methods=['POST'])
+def restore_trip(trip_id):
+    trip = WingTrip.query.get(trip_id)
+    if not trip:
+        return jsonify({"error": "Trip not found"}), 404
+    trip.status = "pending"
+    db.session.commit()
+    return jsonify({"status": "restored"}), 200
+
+# === SOFT DELETE TRIP ===
+@app.route('/trips/<trip_id>', methods=['DELETE'])
+def delete_trip(trip_id):
+    trip = WingTrip.query.get(trip_id)
+    if not trip:
+        return jsonify({"error": "Trip not found"}), 404
+    trip.status = "deleted"
+    db.session.commit()
+    return jsonify({"status": "deleted"}), 200
+
 # === SUBMIT QUOTE ===
 @app.route('/submit-quote', methods=['POST'])
 def submit_quote():
@@ -178,7 +208,7 @@ def submit_quote():
     quote = Quote(
         id=str(uuid.uuid4()),
         trip_id=data["trip_id"],
-        broker_name=data["broker_name"],  # partner name
+        broker_name=data["broker_name"],
         operator_name=data["operator_name"],
         aircraft_type=data["aircraft_type"],
         price=data["price"],
