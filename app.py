@@ -168,8 +168,8 @@ def get_trips():
         "status": t.status,
         "created_at": t.created_at.isoformat() if t.created_at else None
     } for t in trips]), 200
-    
-    @app.route('/trips/<trip_id>/legs', methods=['GET'])  # ✅ CORRECTLY aligned
+
+@app.route('/trips/<trip_id>/legs', methods=['GET'])
 def get_trip_legs(trip_id):
     legs = TripLeg.query.filter_by(trip_id=trip_id).all()
     return jsonify([{
