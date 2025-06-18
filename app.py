@@ -155,20 +155,7 @@ def get_trips():
         query = query.filter_by(planner_email=planner_email)
 
     trips = query.all()
-    return jsonify([{
-        "id": t.id,
-        "route": t.route,
-        "departure_date": t.departure_date,
-        "passenger_count": t.passenger_count,
-        "size": t.size,
-        "budget": t.budget,
-        "broker_name": t.broker_name,
-        "broker_email": t.broker_email,
-        "planner_name": t.planner_name,
-        "planner_email": t.planner_email,
-        "status": t.status,
-        "created_at": t.created_at.isoformat()
-    } for t in trips]), 200
+    return jsonify([{k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in t.to_dict().items()} for t in trips]), 200
 
 @app.route('/trips/<trip_id>/legs', methods=['GET'])
 def get_trip_legs(trip_id):
