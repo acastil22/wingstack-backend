@@ -87,13 +87,11 @@ def save_preferred_partners():
     db.session.commit()
     return jsonify({"status": "success"}), 200
 
-# === Get Registered Partners ===
 @app.route('/registered-partners', methods=['GET'])
 def registered_partners():
     partners = User.query.filter_by(role="partner").all()
     return jsonify([{"email": p.email, "name": p.name} for p in partners]), 200
 
-# === CREATE TRIP ===
 @app.route('/trips', methods=['POST'])
 def create_trip():
     data = request.get_json()
@@ -136,7 +134,6 @@ def create_trip():
     db.session.commit()
     return jsonify({"status": "success", "id": trip_id}), 200
 
-# === MARK TRIP AS BOOKED ===
 @app.route('/trips/mark-booked/<trip_id>', methods=['POST'])
 def mark_trip_as_booked(trip_id):
     trip = WingTrip.query.get(trip_id)
@@ -146,11 +143,19 @@ def mark_trip_as_booked(trip_id):
     db.session.commit()
     return jsonify({"message": f"Trip {trip_id} marked as booked"}), 200
 
-# === GET ALL TRIPS ===
 @app.route('/trips', methods=['GET'])
 def get_trips():
-    trips = WingTrip.query.all()
-    return jsonify([{**{
+    status_filter = request.args.get("status")
+    planner_email = request.args.get("planner_email")
+
+    query = WingTrip.query
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+    if planner_email:
+        query = query.filter_by(planner_email=planner_email)
+
+    trips = query.all()
+    return jsonify([{
         "id": t.id,
         "route": t.route,
         "departure_date": t.departure_date,
@@ -163,9 +168,8 @@ def get_trips():
         "planner_email": t.planner_email,
         "status": t.status,
         "created_at": t.created_at.isoformat()
-    }} for t in trips]), 200
+    } for t in trips]), 200
 
-# === GET TRIP LEGS ===
 @app.route('/trips/<trip_id>/legs', methods=['GET'])
 def get_trip_legs(trip_id):
     legs = TripLeg.query.filter_by(trip_id=trip_id).all()
@@ -177,7 +181,6 @@ def get_trip_legs(trip_id):
         "time": l.time.strftime("%H:%M") if l.time else ""
     } for l in legs]), 200
 
-# === ARCHIVE TRIP ===
 @app.route('/trips/archive/<trip_id>', methods=['POST'])
 def archive_trip(trip_id):
     trip = WingTrip.query.get(trip_id)
@@ -187,7 +190,6 @@ def archive_trip(trip_id):
     db.session.commit()
     return jsonify({"status": "archived"}), 200
 
-# === RESTORE TRIP ===
 @app.route('/trips/restore/<trip_id>', methods=['POST'])
 def restore_trip(trip_id):
     trip = WingTrip.query.get(trip_id)
@@ -197,7 +199,6 @@ def restore_trip(trip_id):
     db.session.commit()
     return jsonify({"status": "restored"}), 200
 
-# === SOFT DELETE TRIP ===
 @app.route('/trips/<trip_id>', methods=['DELETE'])
 def delete_trip(trip_id):
     trip = WingTrip.query.get(trip_id)
@@ -207,7 +208,6 @@ def delete_trip(trip_id):
     db.session.commit()
     return jsonify({"status": "deleted"}), 200
 
-# === SUBMIT QUOTE ===
 @app.route('/submit-quote', methods=['POST'])
 def submit_quote():
     data = request.get_json()
@@ -231,7 +231,6 @@ def submit_quote():
     db.session.commit()
     return jsonify({"status": "success", "id": quote.id}), 200
 
-# === GET QUOTES BY EMAIL ===
 @app.route('/quotes/by-email', methods=['GET'])
 def get_quotes_by_email():
     email = request.args.get("email")
@@ -256,7 +255,6 @@ def get_quotes_by_email():
         "created_at": q.created_at.isoformat()
     } for q in quotes]), 200
 
-# === CHAT ===
 @app.route('/chat/<trip_id>', methods=['GET'])
 def get_or_create_chat(trip_id):
     chat = Chat.query.filter_by(trip_id=trip_id).first()
@@ -315,8 +313,8 @@ def summarize_chat(chat_id):
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                { "role": "system", "content": "You summarize jet charter trip logs." },
-                { "role": "user", "content": prompt }
+                {"role": "system", "content": "You summarize jet charter trip logs."},
+                {"role": "user", "content": prompt}
             ],
             temperature=0.5,
             max_tokens=100
