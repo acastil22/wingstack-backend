@@ -113,7 +113,7 @@ def create_trip():
         broker_email=data.get("broker_email", ""),
         planner_name=data.get("planner_name", ""),
         planner_email=data.get("planner_email", ""),
-        status=data.get("status", "pending"),
+        status="pending",
         created_at=datetime.utcnow()
     )
     db.session.add(trip)
@@ -135,6 +135,16 @@ def create_trip():
 
     db.session.commit()
     return jsonify({"status": "success", "id": trip_id}), 200
+
+# === MARK TRIP AS BOOKED ===
+@app.route('/trips/mark-booked/<trip_id>', methods=['POST'])
+def mark_trip_as_booked(trip_id):
+    trip = WingTrip.query.get(trip_id)
+    if not trip:
+        return jsonify({"error": "Trip not found"}), 404
+    trip.status = "booked"
+    db.session.commit()
+    return jsonify({"message": f"Trip {trip_id} marked as booked"}), 200
 
 # === GET ALL TRIPS ===
 @app.route('/trips', methods=['GET'])
