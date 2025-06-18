@@ -72,13 +72,17 @@ Format:
 @app.route('/trips', methods=['POST'])
 def create_trip():
     data = request.get_json()
+    print("📦 Received trip data:", data)  # ✅ Debug: log incoming JSON
+
     required = ["route", "departure_date"]
     if not all(field in data for field in required):
+        print("❌ Missing required fields:", data)
         return jsonify({"error": "Missing required fields"}), 400
 
     try:
         datetime.strptime(data["departure_date"], "%m/%d/%Y")
     except ValueError:
+        print("❌ Invalid date format:", data["departure_date"])
         return jsonify({"error": "Invalid date format. Use MM/DD/YYYY."}), 400
 
     trip_id = str(uuid.uuid4())
@@ -93,7 +97,7 @@ def create_trip():
         broker_email=data.get("broker_email", ""),
         planner_name=data.get("planner_name", ""),
         planner_email=data.get("planner_email", ""),
-        status="pending",
+        status=data.get("status", "pending"),
         created_at=datetime.utcnow()
     )
     db.session.add(trip)
@@ -111,9 +115,11 @@ def create_trip():
                 time=time_obj
             ))
         except ValueError:
+            print("❌ Invalid leg format:", leg)
             return jsonify({"error": f"Invalid leg date/time format: {leg}"}), 400
 
     db.session.commit()
+    print("✅ Trip created successfully:", trip_id)
     return jsonify({"status": "success", "id": trip_id}), 200
 
 @app.route('/trips/<trip_id>', methods=['PATCH'])
