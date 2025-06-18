@@ -69,8 +69,7 @@ Format:
         return jsonify({"error": "Invalid JSON", "raw_output": content}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-# === Save Preferred Partners ===
+        # === Save Preferred Partners ===
 @app.route('/save-preferred-partners', methods=['POST'])
 def save_preferred_partners():
     data = request.get_json()
@@ -155,9 +154,22 @@ def get_trips():
         query = query.filter_by(planner_email=planner_email)
 
     trips = query.all()
-    return jsonify([{k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in t.to_dict().items()} for t in trips]), 200
-
-@app.route('/trips/<trip_id>/legs', methods=['GET'])
+    return jsonify([{
+        "id": t.id,
+        "route": t.route,
+        "departure_date": t.departure_date,
+        "passenger_count": t.passenger_count,
+        "size": t.size,
+        "budget": t.budget,
+        "broker_name": t.broker_name,
+        "broker_email": t.broker_email,
+        "planner_name": t.planner_name,
+        "planner_email": t.planner_email,
+        "status": t.status,
+        "created_at": t.created_at.isoformat() if t.created_at else None
+    } for t in trips]), 200
+    
+    @app.route('/trips/<trip_id>/legs', methods=['GET'])  # ✅ CORRECTLY aligned
 def get_trip_legs(trip_id):
     legs = TripLeg.query.filter_by(trip_id=trip_id).all()
     return jsonify([{
@@ -309,7 +321,6 @@ def summarize_chat(chat_id):
         chat.summary = response.choices[0].message.content.strip()
         db.session.commit()
         return jsonify({"summary": chat.summary}), 200
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
