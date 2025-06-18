@@ -25,7 +25,6 @@ with app.app_context():
 def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
-# === AI PARSER ===
 @app.route('/parse-trip-input', methods=['POST'])
 def parse_trip_input():
     data = request.get_json()
@@ -69,27 +68,6 @@ Format:
         return jsonify({"error": "Invalid JSON", "raw_output": content}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-        # === Save Preferred Partners ===
-@app.route('/save-preferred-partners', methods=['POST'])
-def save_preferred_partners():
-    data = request.get_json()
-    email = data.get("planner_email")
-    partners = data.get("partners", [])
-    if not email:
-        return jsonify({"error": "Missing planner email"}), 400
-
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    user.preferred_partners = json.dumps(partners)
-    db.session.commit()
-    return jsonify({"status": "success"}), 200
-
-@app.route('/registered-partners', methods=['GET'])
-def registered_partners():
-    partners = User.query.filter_by(role="partner").all()
-    return jsonify([{"email": p.email, "name": p.name} for p in partners]), 200
 
 @app.route('/trips', methods=['POST'])
 def create_trip():
@@ -97,6 +75,11 @@ def create_trip():
     required = ["route", "departure_date"]
     if not all(field in data for field in required):
         return jsonify({"error": "Missing required fields"}), 400
+
+    try:
+        datetime.strptime(data["departure_date"], "%m/%d/%Y")
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use MM/DD/YYYY."}), 400
 
     trip_id = str(uuid.uuid4())
     trip = WingTrip(
@@ -132,6 +115,31 @@ def create_trip():
 
     db.session.commit()
     return jsonify({"status": "success", "id": trip_id}), 200
+
+@app.route('/trips/<trip_id>', methods=['PATCH'])
+def update_trip(trip_id):
+    trip = WingTrip.query.get(trip_id)
+    if not trip:
+        return jsonify({"error": "Trip not found"}), 404
+
+    data = request.get_json()
+    if "route" in data:
+        trip.route = data["route"]
+    if "departure_date" in data:
+        try:
+            datetime.strptime(data["departure_date"], "%m/%d/%Y")
+            trip.departure_date = data["departure_date"]
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use MM/DD/YYYY."}), 400
+    if "passenger_count" in data:
+        trip.passenger_count = data["passenger_count"]
+    if "budget" in data:
+        trip.budget = data["budget"]
+    if "status" in data:
+        trip.status = data["status"]
+
+    db.session.commit()
+    return jsonify({"status": "updated"}), 200
 
 @app.route('/trips/mark-booked/<trip_id>', methods=['POST'])
 def mark_trip_as_booked(trip_id):
@@ -207,28 +215,6 @@ def delete_trip(trip_id):
     db.session.commit()
     return jsonify({"status": "deleted"}), 200
 
-@app.route('/trips/<trip_id>', methods=['PATCH'])
-def update_trip(trip_id):
-    trip = WingTrip.query.get(trip_id)
-    if not trip:
-        return jsonify({"error": "Trip not found"}), 404
-
-    data = request.get_json()
-
-    # Update fields if present in payload
-    if "route" in data:
-        trip.route = data["route"]
-    if "departure_date" in data:
-        trip.departure_date = data["departure_date"]
-    if "passenger_count" in data:
-        trip.passenger_count = data["passenger_count"]
-    if "budget" in data:
-        trip.budget = data["budget"]
-    if "status" in data:
-        trip.status = data["status"]
-
-    db.session.commit()
-    return jsonify({"status": "updated"}), 200
 @app.route('/submit-quote', methods=['POST'])
 def submit_quote():
     data = request.get_json()
