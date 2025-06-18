@@ -207,6 +207,28 @@ def delete_trip(trip_id):
     db.session.commit()
     return jsonify({"status": "deleted"}), 200
 
+@app.route('/trips/<trip_id>', methods=['PATCH'])
+def update_trip(trip_id):
+    trip = WingTrip.query.get(trip_id)
+    if not trip:
+        return jsonify({"error": "Trip not found"}), 404
+
+    data = request.get_json()
+
+    # Update fields if present in payload
+    if "route" in data:
+        trip.route = data["route"]
+    if "departure_date" in data:
+        trip.departure_date = data["departure_date"]
+    if "passenger_count" in data:
+        trip.passenger_count = data["passenger_count"]
+    if "budget" in data:
+        trip.budget = data["budget"]
+    if "status" in data:
+        trip.status = data["status"]
+
+    db.session.commit()
+    return jsonify({"status": "updated"}), 200
 @app.route('/submit-quote', methods=['POST'])
 def submit_quote():
     data = request.get_json()
