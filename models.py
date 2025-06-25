@@ -25,6 +25,7 @@ class Quote(db.Model):
     broker_name = db.Column(db.String, nullable=False)
     operator_name = db.Column(db.String, nullable=False)
     aircraft_type = db.Column(db.String, nullable=False)
+    aircraft_category = db.Column(db.String, nullable=True)  # NEW: turbo, light, super mid, etc.
     price = db.Column(db.String, nullable=False)
     notes = db.Column(db.String, nullable=True)
     submitted_by_email = db.Column(db.String, nullable=True)
