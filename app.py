@@ -72,7 +72,7 @@ Format:
 @app.route('/trips', methods=['POST'])
 def create_trip():
     data = request.get_json()
-    print("📦 Received trip data:", data)  # ✅ Debug: log incoming JSON
+    print("\U0001F4E6 Received trip data:", data)
 
     required = ["route", "departure_date"]
     if not all(field in data for field in required):
@@ -93,8 +93,8 @@ def create_trip():
         passenger_count=data.get("passenger_count", ""),
         size=data.get("size", ""),
         budget=data.get("budget", ""),
-        broker_name=data.get("broker_name", ""),
-        broker_email=data.get("broker_email", ""),
+        partner_names=json.dumps(data.get("partner_names", [])),
+        partner_emails=json.dumps(data.get("partner_emails", [])),
         planner_name=data.get("planner_name", ""),
         planner_email=data.get("planner_email", ""),
         status=data.get("status", "pending"),
@@ -121,6 +121,42 @@ def create_trip():
     db.session.commit()
     print("✅ Trip created successfully:", trip_id)
     return jsonify({"status": "success", "id": trip_id}), 200
+
+@app.route('/trips', methods=['GET'])
+def get_trips():
+    status_filter = request.args.get("status")
+    planner_email = request.args.get("planner_email")
+
+    query = WingTrip.query
+    if status_filter:
+        query = query.filter_by(status=status_filter)
+    if planner_email:
+        query = query.filter_by(planner_email=planner_email)
+
+    trips = query.all()
+    return jsonify([{
+        "id": t.id,
+        "route": t.route,
+        "departure_date": t.departure_date,
+        "passenger_count": t.passenger_count,
+        "size": t.size,
+        "budget": t.budget,
+        "partner_names": json.loads(t.partner_names or "[]"),
+        "partner_emails": json.loads(t.partner_emails or "[]"),
+        "planner_name": t.planner_name,
+        "planner_email": t.planner_email,
+        "status": t.status,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "broker_name": json.loads(t.partner_names or "[]")[0] if t.partner_names else "",
+        "broker_email": json.loads(t.partner_emails or "[]")[0] if t.partner_emails else ""
+    } for t in trips]), 200
+
+# You can leave the rest of app.py (PATCH, DELETE, CHAT, etc.) unchanged unless you want to support updates to partner lists.
+
+# (Optional improvements: update PATCH endpoint to support editing partner_emails and partner_names)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
 
 @app.route('/trips/<trip_id>', methods=['PATCH'])
 def update_trip(trip_id):
@@ -155,33 +191,6 @@ def mark_trip_as_booked(trip_id):
     trip.status = "booked"
     db.session.commit()
     return jsonify({"message": f"Trip {trip_id} marked as booked"}), 200
-
-@app.route('/trips', methods=['GET'])
-def get_trips():
-    status_filter = request.args.get("status")
-    planner_email = request.args.get("planner_email")
-
-    query = WingTrip.query
-    if status_filter:
-        query = query.filter_by(status=status_filter)
-    if planner_email:
-        query = query.filter_by(planner_email=planner_email)
-
-    trips = query.all()
-    return jsonify([{
-        "id": t.id,
-        "route": t.route,
-        "departure_date": t.departure_date,
-        "passenger_count": t.passenger_count,
-        "size": t.size,
-        "budget": t.budget,
-        "broker_name": t.broker_name,
-        "broker_email": t.broker_email,
-        "planner_name": t.planner_name,
-        "planner_email": t.planner_email,
-        "status": t.status,
-        "created_at": t.created_at.isoformat() if t.created_at else None
-    } for t in trips]), 200
 
 @app.route('/trips/<trip_id>/legs', methods=['GET'])
 def get_trip_legs(trip_id):
