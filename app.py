@@ -124,32 +124,45 @@ def create_trip():
 
 @app.route('/trips', methods=['GET'])
 def get_trips():
-    status_filter = request.args.get("status")
-    planner_email = request.args.get("planner_email")
+    try:
+        status_filter = request.args.get("status")
+        planner_email = request.args.get("planner_email")
 
-    query = WingTrip.query
-    if status_filter:
-        query = query.filter_by(status=status_filter)
-    if planner_email:
-        query = query.filter_by(planner_email=planner_email)
+        query = WingTrip.query
+        if status_filter:
+            query = query.filter_by(status=status_filter)
+        if planner_email:
+            query = query.filter_by(planner_email=planner_email)
 
-    trips = query.all()
-    return jsonify([{
-        "id": t.id,
-        "route": t.route,
-        "departure_date": t.departure_date,
-        "passenger_count": t.passenger_count,
-        "size": t.size,
-        "budget": t.budget,
-        "partner_names": json.loads(t.partner_names or "[]"),
-        "partner_emails": json.loads(t.partner_emails or "[]"),
-        "planner_name": t.planner_name,
-        "planner_email": t.planner_email,
-        "status": t.status,
-        "created_at": t.created_at.isoformat() if t.created_at else None,
-        "broker_name": json.loads(t.partner_names or "[]")[0] if t.partner_names else "",
-        "broker_email": json.loads(t.partner_emails or "[]")[0] if t.partner_emails else ""
-    } for t in trips]), 200
+        trips = query.all()
+
+        results = []
+        for t in trips:
+            try:
+                results.append({
+                    "id": t.id,
+                    "route": t.route,
+                    "departure_date": t.departure_date,
+                    "passenger_count": t.passenger_count,
+                    "size": t.size,
+                    "budget": t.budget,
+                    "partner_names": json.loads(t.partner_names or "[]"),
+                    "partner_emails": json.loads(t.partner_emails or "[]"),
+                    "planner_name": t.planner_name,
+                    "planner_email": t.planner_email,
+                    "status": t.status,
+                    "created_at": t.created_at.isoformat() if t.created_at else None,
+                    "broker_name": json.loads(t.partner_names or "[]")[0] if t.partner_names else "",
+                    "broker_email": json.loads(t.partner_emails or "[]")[0] if t.partner_emails else ""
+                })
+            except Exception as trip_err:
+                print(f"❌ Error processing trip {t.id}: {trip_err}")
+
+        return jsonify(results), 200
+
+    except Exception as e:
+        print(f"❌ Error in /trips GET route: {e}")
+        return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
 # You can leave the rest of app.py (PATCH, DELETE, CHAT, etc.) unchanged unless you want to support updates to partner lists.
 
