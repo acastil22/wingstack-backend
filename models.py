@@ -25,7 +25,7 @@ class Quote(db.Model):
     broker_name = db.Column(db.String, nullable=False)
     operator_name = db.Column(db.String, nullable=False)
     aircraft_type = db.Column(db.String, nullable=False)
-    aircraft_category = db.Column(db.String, nullable=True)  # NEW: turbo, light, super mid, etc.
+    aircraft_category = db.Column(db.String, nullable=True)  # e.g., turbo, light, super mid, etc.
     price = db.Column(db.String, nullable=False)
     notes = db.Column(db.String, nullable=True)
     submitted_by_email = db.Column(db.String, nullable=True)
@@ -41,8 +41,8 @@ class WingTrip(db.Model):
     passenger_count = db.Column(db.String, nullable=True)
     size = db.Column(db.String, nullable=True)
     budget = db.Column(db.String, nullable=True)
-    broker_name = db.Column(db.String, nullable=True)
-    broker_email = db.Column(db.String, nullable=True)
+    partner_names = db.Column(db.Text, nullable=True)   # JSON-encoded list of names
+    partner_emails = db.Column(db.Text, nullable=True)  # JSON-encoded list of emails
     planner_name = db.Column(db.String, nullable=True)
     planner_email = db.Column(db.String, nullable=True)
     status = db.Column(db.String, nullable=False, default="pending")
