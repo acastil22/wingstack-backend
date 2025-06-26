@@ -239,9 +239,26 @@ def delete_trip(trip_id):
     trip = WingTrip.query.get(trip_id)
     if not trip:
         return jsonify({"error": "Trip not found"}), 404
+
     trip.status = "deleted"
     db.session.commit()
-    return jsonify({"status": "deleted"}), 200
+
+    # ✅ Create chat and system message
+    chat = Chat.query.filter_by(trip_id=trip_id).first()
+    if not chat:
+        chat = Chat(trip_id=trip_id)
+        db.session.add(chat)
+        db.session.commit()
+
+    msg = Message(
+        chat_id=chat.id,
+        sender_email="system@wingstack.ai",
+        content="Planner has deleted this trip request."
+    )
+    db.session.add(msg)
+    db.session.commit()
+
+    return jsonify({"status": "deleted", "chat_id": chat.id}), 200
 
 @app.route('/submit-quote', methods=['POST'])
 def submit_quote():
@@ -297,13 +314,24 @@ def get_or_create_chat(trip_id):
         chat = Chat(trip_id=trip_id)
         db.session.add(chat)
         db.session.commit()
+
+        # Optional: preload a "deleted" message when chat is first created
+        # You can move this elsewhere if you want more control
+        deletion_msg = Message(
+            chat_id=chat.id,
+            sender_email="system@wingstack.ai",
+            content="Planner has deleted this trip request.",
+        )
+        db.session.add(deletion_msg)
+        db.session.commit()
+
     return jsonify({
         "chat_id": chat.id,
         "trip_id": chat.trip_id,
         "summary": chat.summary or "",
         "created_at": chat.created_at.isoformat()
     })
-
+    
 @app.route('/messages/<chat_id>', methods=['GET'])
 def get_messages(chat_id):
     messages = Message.query.filter_by(chat_id=chat_id).order_by(Message.timestamp).all()
