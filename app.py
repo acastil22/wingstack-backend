@@ -438,3 +438,54 @@ def summarize_chat(chat_id):
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+
+@app.route('/parse-email-quote', methods=['POST'])
+def parse_email_quote():
+    data = request.get_json()
+    email_body = data.get("email_body", "").strip()
+
+    if not email_body:
+        return jsonify({"error": "No email body provided."}), 400
+
+    system_prompt = (
+        "You are an expert assistant for parsing private jet charter quotes. "
+        "Extract structured information from this email body. "
+        "Always respond in JSON. Fields: aircraft, price, category (e.g., Light, Mid, Heavy), broker name, "
+        "cancellation policy, Wi-Fi availability, year of make (YOM), year of refurbishment (if available), notes."
+    )
+
+    user_prompt = f"""
+Email Body:
+\"\"\"{email_body}\"\"\"
+
+Return JSON in this format:
+{{
+  "aircraft": "Citation XLS",
+  "price": "23000",
+  "category": "Mid",
+  "broker_name": "JetLux",
+  "cancellation_policy": "25% nonrefundable",
+  "wifi": "Yes",
+  "yom": "2018",
+  "refurbished_year": "2022",
+  "notes": "Seats 8, enclosed lav, new interior"
+}}
+"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.2,
+            max_tokens=800
+        )
+        content = response.choices[0].message.content.strip()
+        parsed = json.loads(content)
+        return jsonify(parsed), 200
+
+    except Exception as e:
+        print("❌ Failed to parse email quote:", str(e))
+        return jsonify({"error": str(e)}), 500
