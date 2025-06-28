@@ -2,9 +2,10 @@ from flask import Flask, request, jsonify
 from models import db, Quote, WingTrip, Chat, Message, TripLeg, User
 import uuid
 import os
+import json
+import re
 from datetime import datetime
 import openai
-import json
 
 # === OpenAI Setup ===
 openai_api_key = os.environ.get('OPENAI_API_KEY')
@@ -25,6 +26,43 @@ with app.app_context():
 def home():
     return jsonify({"message": "WingStack backend is alive!"})
 
+# === Fallback Regex Parser ===
+def fallback_regex_parser(text):
+    legs = []
+    date_pattern = r"\b(\d{1,2}/\d{1,2}/\d{2,4})\b"
+    airport_pattern = r"\b([A-Z]{3})[- ]+([A-Z]{3})\b"
+    pax_pattern = r"(\d+)\s*(pax|passengers|adults)"
+    budget_pattern = r"\$?(\d{1,3}(?:,\d{3})*|\d+)(k|K| thousand)?\s*(USD|usd|\$)?"
+
+    leg_matches = re.findall(rf"{airport_pattern}.*?{date_pattern}", text)
+    for match in leg_matches:
+        from_airport, to_airport, date_str = match
+        try:
+            formatted_date = datetime.strptime(date_str, "%m/%d/%Y").strftime("%m/%d/%Y")
+            legs.append({"from": from_airport, "to": to_airport, "date": formatted_date, "time": ""})
+        except:
+            continue
+
+    pax_match = re.search(pax_pattern, text.lower())
+    passenger_count = pax_match.group(1) if pax_match else ""
+
+    budget_match = re.search(budget_pattern, text)
+    if budget_match:
+        raw_amount = budget_match.group(1).replace(",", "")
+        if budget_match.group(2) in ["k", "K", " thousand"]:
+            budget = str(int(float(raw_amount) * 1000))
+        else:
+            budget = raw_amount
+    else:
+        budget = ""
+
+    return {
+        "legs": legs,
+        "passenger_count": passenger_count,
+        "budget": budget
+    }
+
+# === AI Trip Parsing Endpoint ===
 @app.route('/parse-trip-input', methods=['POST'])
 def parse_trip_input():
     data = request.get_json()
@@ -62,13 +100,24 @@ Format:
         )
         content = response.choices[0].message.content.strip()
         parsed = json.loads(content)
+
+        if not isinstance(parsed.get("legs"), list) or not parsed.get("passenger_count"):
+            raise ValueError("Missing required fields")
+
         return jsonify(parsed), 200
 
-    except json.JSONDecodeError:
-        return jsonify({"error": "Invalid JSON", "raw_output": content}), 500
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print("❌ AI failed. Falling back to regex parser.")
+        fallback = fallback_regex_parser(input_text)
 
+        # Log failed input
+        os.makedirs("logs", exist_ok=True)
+        with open("logs/failed_parse_logs.txt", "a") as f:
+            f.write(f"[{datetime.now()}] Failed AI input:\n{input_text}\nFallback result:\n{json.dumps(fallback)}\n\n")
+
+        return jsonify(fallback), 200
+
+# === Trip Creation ===
 @app.route('/trips', methods=['POST'])
 def create_trip():
     data = request.get_json()
@@ -121,7 +170,6 @@ def create_trip():
     db.session.commit()
     print("✅ Trip created successfully:", trip_id)
     return jsonify({"status": "success", "id": trip_id}), 200
-
 @app.route('/trips', methods=['GET'])
 def get_trips():
     try:
