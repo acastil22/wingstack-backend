@@ -12,6 +12,12 @@ import pdfplumber
 from schemas import TripInput, QuoteInput
 from pydantic import ValidationError
 
+# === Auth Helper for AI Endpoints ===
+def verify_ai_auth(request):
+    expected_token = os.environ.get("AI_AUTH_TOKEN")
+    provided_token = request.headers.get("X-Wingstack-AI-Key")
+    return expected_token and provided_token == expected_token
+
 # === OpenAI Setup ===
 openai_api_key = os.environ.get('OPENAI_API_KEY')
 if not openai_api_key:
@@ -70,11 +76,15 @@ def fallback_regex_parser(text):
 # === AI Trip Parsing Endpoint ===
 @app.route('/parse-trip-input', methods=['POST'])
 def parse_trip_input():
+    if not verify_ai_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     input_text = data.get("input_text", "").strip()
     if not input_text:
         return jsonify({"error": "No input text provided."}), 400
 
+    # ... (rest of your logic remains unchanged)
     system_prompt = (
         "You are an AI assistant for private jet bookings. "
         "Extract trip details from natural language into a strict JSON format. "
@@ -440,6 +450,9 @@ def summarize_chat(chat_id):
 
 @app.route('/parse-email-quote', methods=['POST'])
 def parse_email_quote():
+    if not verify_ai_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     email_body = data.get("email_body", "").strip()
 
@@ -491,6 +504,9 @@ Return JSON in this format:
         
 @app.route('/parse-quote-pdf', methods=['POST'])
 def parse_quote_pdf():
+    if not verify_ai_auth(request):
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
     b64pdf = data.get("base64_pdf", "").strip()
 
