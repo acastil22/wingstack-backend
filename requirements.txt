@@ -6,3 +6,5 @@ openai
 PyPDF2
 requests
 beautifulsoup4
+pdfplumber
+PyPDF2
