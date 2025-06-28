@@ -9,6 +9,8 @@ import openai
 import base64
 import io
 import pdfplumber
+from schemas import TripInput, QuoteInput
+from pydantic import ValidationError
 
 # === OpenAI Setup ===
 openai_api_key = os.environ.get('OPENAI_API_KEY')
@@ -219,34 +221,31 @@ def get_trips():
 
 # (Optional improvements: update PATCH endpoint to support editing partner_emails and partner_names)
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
-
 @app.route('/trips/<trip_id>', methods=['PATCH'])
 def update_trip(trip_id):
     trip = WingTrip.query.get(trip_id)
     if not trip:
         return jsonify({"error": "Trip not found"}), 404
 
-    data = request.get_json()
-    if "route" in data:
-        trip.route = data["route"]
-    if "departure_date" in data:
-        try:
-            datetime.strptime(data["departure_date"], "%m/%d/%Y")
-            trip.departure_date = data["departure_date"]
-        except ValueError:
-            return jsonify({"error": "Invalid date format. Use MM/DD/YYYY."}), 400
-    if "passenger_count" in data:
-        trip.passenger_count = data["passenger_count"]
-    if "budget" in data:
-        trip.budget = data["budget"]
-    if "status" in data:
-        trip.status = data["status"]
+    try:
+        validated_data = TripUpdateInput(**request.get_json())
+    except ValidationError as e:
+        return jsonify({"error": e.errors()}), 400
+
+    if validated_data.route is not None:
+        trip.route = validated_data.route
+    if validated_data.departure_date is not None:
+        trip.departure_date = validated_data.departure_date
+    if validated_data.passenger_count is not None:
+        trip.passenger_count = validated_data.passenger_count
+    if validated_data.budget is not None:
+        trip.budget = validated_data.budget
+    if validated_data.status is not None:
+        trip.status = validated_data.status
 
     db.session.commit()
     return jsonify({"status": "updated"}), 200
-
+    
 @app.route('/trips/mark-booked/<trip_id>', methods=['POST'])
 def mark_trip_as_booked(trip_id):
     trip = WingTrip.query.get(trip_id)
@@ -439,9 +438,6 @@ def summarize_chat(chat_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
-
 @app.route('/parse-email-quote', methods=['POST'])
 def parse_email_quote():
     data = request.get_json()
@@ -555,3 +551,7 @@ Return JSON in this format:
     except Exception as e:
         print("❌ PDF parsing or AI failed:", str(e))
         return jsonify({"error": str(e)}), 500
+
+# ✅ Keep this at the bottom of your file
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
