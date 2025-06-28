@@ -6,6 +6,9 @@ import json
 import re
 from datetime import datetime
 import openai
+import base64
+import io
+import pdfplumber
 
 # === OpenAI Setup ===
 openai_api_key = os.environ.get('OPENAI_API_KEY')
@@ -488,4 +491,67 @@ Return JSON in this format:
 
     except Exception as e:
         print("❌ Failed to parse email quote:", str(e))
+        return jsonify({"error": str(e)}), 500
+        
+@app.route('/parse-quote-pdf', methods=['POST'])
+def parse_quote_pdf():
+    data = request.get_json()
+    b64pdf = data.get("base64_pdf", "").strip()
+
+    if not b64pdf:
+        return jsonify({"error": "Missing PDF content"}), 400
+
+    try:
+        # Decode PDF and extract text
+        pdf_bytes = base64.b64decode(b64pdf)
+        pdf_file = io.BytesIO(pdf_bytes)
+
+        with pdfplumber.open(pdf_file) as pdf:
+            extracted_text = "\n".join([page.extract_text() or "" for page in pdf.pages])
+
+        if not extracted_text.strip():
+            return jsonify({"error": "PDF parsing returned empty content."}), 400
+
+        # Prompt AI with extracted text
+        system_prompt = (
+            "You are an expert assistant for private jet charter brokers. "
+            "Extract structured quote details from this PDF text. Return clean JSON only. "
+            "Fields: aircraft, price, category (e.g., Light, Mid, Heavy), broker name, "
+            "cancellation policy, Wi-Fi, YOM, refurbished year, and notes."
+        )
+
+        user_prompt = f"""
+Quote PDF text:
+\"\"\"{extracted_text}\"\"\"
+
+Return JSON in this format:
+{{
+  "aircraft": "Gulfstream G450",
+  "price": "39000",
+  "category": "Heavy",
+  "broker_name": "Monarch Air",
+  "cancellation_policy": "50% nonrefundable inside 72h",
+  "wifi": "Yes",
+  "yom": "2015",
+  "refurbished_year": "2021",
+  "notes": "Seats 13. Flight attendant included. Pets allowed."
+}}
+"""
+
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.2,
+            max_tokens=800
+        )
+
+        content = response.choices[0].message.content.strip()
+        parsed = json.loads(content)
+        return jsonify(parsed), 200
+
+    except Exception as e:
+        print("❌ PDF parsing or AI failed:", str(e))
         return jsonify({"error": str(e)}), 500
